@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Калькулятор стека: метрики и логи</title>
+  <style>
+    :root { --bg: #f5f5f5; --card: #fff; --border: #ddd; --text: #1f2937; --muted: #6b7280; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1.85rem; line-height: 1.5; max-width: 56rem; margin-inline: auto; }
+    h1 { font-size: 1.25rem; margin: 0 0 1.25rem; }
+    h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+    .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
+    .section { background: var(--card); border-radius: 8px; padding: 1.25rem; border: 1px solid var(--border); margin-bottom: 1.25rem; }
+    .section--compact { padding: 0.85rem 1rem; margin-bottom: 1rem; }
+    .section--compact h2 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+    .section--compact .field label { font-size: 0.7rem; margin-bottom: 0.2rem; }
+    .section--compact .field select { padding: 0.4rem 0.45rem; font-size: 0.85rem; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+    .field label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.25rem; }
+    .field input { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.875rem; }
+    .field select { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.875rem; background: #fff; }
+    .results { margin-top: 1.25rem; }
+    .results h3 { font-size: 1rem; margin: 0 0 0.75rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: var(--bg); color: var(--muted); font-weight: 600; }
+    thead tr:first-child th.th-group {
+      text-align: center; font-size: 0.7rem; letter-spacing: 0.03em;
+      border-bottom: 1px solid var(--border);
+    }
+    th.cell-group-end, td.cell-group-end { box-shadow: inset -1px 0 0 var(--border); }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .note { font-size: 0.75rem; color: var(--muted); margin-top: 1rem; }
+    code { font-size: 0.8em; background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Калькулятор стека: метрики и логи</h1>
+
+  <section class="section" aria-labelledby="heading-metrics">
+    <h2 id="heading-metrics">Метрики</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label>Retention (метрики)</label>
+        <select id="m-retention-days">
+          <option value="1">1 день</option>
+          <option value="7" selected>7 дней</option>
+          <option value="30">30 дней</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Целевая кардинальность (число series)</label>
+        <input type="number" id="m-series" value="10000" min="1" step="1000" title="Как в ObsBench для Prometheus / VictoriaMetrics">
+      </div>
+    </div>
+    <div id="results-metrics" class="results"></div>
+  </section>
+
+  <section class="section" aria-labelledby="heading-logs">
+    <h2 id="heading-logs">Логи</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label>Retention (логи)</label>
+        <select id="l-retention-days">
+          <option value="1">1 день</option>
+          <option value="7" selected>7 дней</option>
+          <option value="30">30 дней</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Целевая скорость ingestion (строк/с)</label>
+        <input type="number" id="l-series" value="10000" min="1" step="1000" title="Как в ObsBench: тот же параметр записывается в поле series">
+      </div>
+    </div>
+    <div id="results-logs" class="results"></div>
+  </section>
+
+  <section class="section" aria-labelledby="heading-prices">
+    <h2 id="heading-prices">Тарифы (общие для метрик и логов)</h2>
+    <p class="subtitle" style="margin-top:-0.25rem;margin-bottom:1rem;">Единицы — рубли в месяц за 1 GiB RAM, 1 vCPU и 1 GiB диска.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label>RAM (₽ / GiB / месяц)</label>
+        <input type="number" id="price-ram" value="400" min="0" step="10">
+      </div>
+      <div class="field">
+        <label>CPU (₽ / ядро / месяц)</label>
+        <input type="number" id="price-cpu" value="2500" min="0" step="50">
+      </div>
+      <div class="field">
+        <label>Диск (₽ / GiB / месяц)</label>
+        <input type="number" id="price-disk" value="8" min="0" step="1">
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const METRICS_INSTRUMENTS = new Set(["prometheus", "victoria_metrics"]);
+    const LOGS_INSTRUMENTS = new Set(["loki", "opensearch"]);
+    const RETENTION_DEFAULT_DAYS = 7;
+
+    const INSTRUMENT_LABEL = {
+      prometheus: "Prometheus",
+      victoria_metrics: "VictoriaMetrics",
+      loki: "Loki",
+      opensearch: "OpenSearch"
+    };
+
+    /** @type {Array<object>} */
+    let RAW_ROWS = [];
+    /** @type {object} */
+    let MODEL_PARAMS = {};
+
+    function labelInstrument(inst) {
+      return INSTRUMENT_LABEL[inst] || inst;
+    }
+
+    function bytesToGiB(b) {
+      return b / (1024 ** 3);
+    }
+
+    function rowToPoint(r) {
+      const peak = r.mem_peak_bytes != null ? r.mem_peak_bytes : r.mem_avg_bytes;
+      return {
+        instrument: r.instrument,
+        workload_type: r.workload_type || inferWorkloadType(r.instrument),
+        // Backward-compatible: old data may still use `series`.
+        series: Number(r.load_value != null ? r.load_value : r.series) || 0,
+        retention_days: r.retention_days != null ? Number(r.retention_days) : RETENTION_DEFAULT_DAYS,
+        ram_gib: bytesToGiB(Number(peak) || 0),
+        cpu_cores: Number(r.cpu_cores) || 0,
+        disk_gib: bytesToGiB(Number(r.disk_bytes) || 0)
+      };
+    }
+
+    function inferWorkloadType(instrument) {
+      return LOGS_INSTRUMENTS.has(instrument) ? "logs" : "metrics";
+    }
+
+    function getModelParams(instrument, workloadType) {
+      const byInst = MODEL_PARAMS?.by_instrument_workload || {};
+      const key = `${instrument}:${workloadType}`;
+      const fallback = MODEL_PARAMS?.default || {};
+      return { ...fallback, ...(byInst[key] || {}) };
+    }
+
+    function getMetricsRetentionDays() {
+      return Number(document.getElementById("m-retention-days").value) || RETENTION_DEFAULT_DAYS;
+    }
+
+    function getLogsRetentionDays() {
+      return Number(document.getElementById("l-retention-days").value) || RETENTION_DEFAULT_DAYS;
+    }
+
+    function buildPointsForInstrumentsAndRetention(rows, allowed, retentionDays) {
+      return rows
+        .filter((r) => r && allowed.has(r.instrument))
+        .map(rowToPoint)
+        .map((p) => {
+          const params = getModelParams(p.instrument, p.workload_type);
+          const alphaCpu = Number(params.alpha_cpu ?? 0.15);
+          const alphaRam = Number(params.alpha_ram ?? 0.25);
+          const alphaDisk = Number(params.alpha_disk ?? 1.0);
+          const kCpu = Math.pow(retentionDays / p.retention_days, alphaCpu);
+          const kRam = Math.pow(retentionDays / p.retention_days, alphaRam);
+          const kDisk = Math.pow(retentionDays / p.retention_days, alphaDisk);
+          return {
+            ...p,
+            retention_days: retentionDays,
+            cpu_cores: p.cpu_cores * kCpu,
+            ram_gib: p.ram_gib * kRam,
+            disk_gib: p.disk_gib * kDisk
+          };
+        });
+    }
+
+    function uniqueInstruments(points) {
+      return [...new Set(points.map((p) => p.instrument))];
+    }
+
+    /** Оценка по зависимости от оси нагрузки (`series` в точках); вне точек — по крайнему отрезку. */
+    function interpolateBySeries(points, S, field) {
+      const sorted = [...points].sort((a, b) => a.series - b.series);
+      const n = sorted.length;
+      if (n === 0) return 0;
+      const sMin = sorted[0].series;
+      const sMax = sorted[n - 1].series;
+      const seg = (p0, p1, s) => {
+        const ds = p1.series - p0.series;
+        if (ds === 0) return p0[field];
+        return p0[field] + ((s - p0.series) / ds) * (p1[field] - p0[field]);
+      };
+      if (n === 1) return sorted[0][field];
+      if (S <= sMin) return seg(sorted[0], sorted[1], S);
+      if (S >= sMax) return seg(sorted[n - 2], sorted[n - 1], S);
+      let i = 0;
+      while (i < n - 1 && sorted[i + 1].series < S) i++;
+      const p0 = sorted[i], p1 = sorted[i + 1];
+      return seg(p0, p1, S);
+    }
+
+    async function loadData() {
+      try {
+        const res = await fetch("data.json");
+        if (!res.ok) throw new Error(res.status + " " + res.statusText);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          RAW_ROWS = data;
+          MODEL_PARAMS = {};
+        } else if (data && typeof data === "object") {
+          RAW_ROWS = Array.isArray(data.measurements) ? data.measurements : [];
+          MODEL_PARAMS = data.model_params && typeof data.model_params === "object" ? data.model_params : {};
+        } else {
+          RAW_ROWS = [];
+          MODEL_PARAMS = {};
+        }
+      } catch (e) {
+        RAW_ROWS = [];
+        MODEL_PARAMS = {};
+        console.warn(e);
+      }
+    }
+
+    function calcForSection(points, series, priceRam, priceCpu, priceDisk) {
+      const results = [];
+      for (const inst of uniqueInstruments(points)) {
+        const instPts = points.filter((p) => p.instrument === inst);
+        const ramGiB = interpolateBySeries(instPts, series, "ram_gib");
+        const cpuCores = interpolateBySeries(instPts, series, "cpu_cores");
+        const diskGiB = interpolateBySeries(instPts, series, "disk_gib");
+        const costRam = ramGiB * priceRam;
+        const costCpu = cpuCores * priceCpu;
+        const costDisk = diskGiB * priceDisk;
+        results.push({
+          label: labelInstrument(inst),
+          instrument: inst,
+          costRam,
+          costCpu,
+          costDisk,
+          total: costRam + costCpu + costDisk,
+          ramGiB,
+          cpuCores,
+          diskGiB
+        });
+      }
+      results.sort((a, b) => a.total - b.total);
+      return results;
+    }
+
+    function formatRub(n) {
+      return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    }
+
+    function renderTable(title, rows, resultsElId, noteHtml) {
+      const html = `
+        <h3>${title}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th rowspan="2">Система</th>
+              <th colspan="3" class="th-group">Ресурсы</th>
+              <th colspan="4" class="th-group">Стоимость (₽/мес)</th>
+            </tr>
+            <tr>
+              <th class="num">RAM пик, GiB</th>
+              <th class="num">CPU</th>
+              <th class="num cell-group-end">Диск, GiB</th>
+              <th class="num">RAM</th>
+              <th class="num">CPU</th>
+              <th class="num">Хранилище</th>
+              <th class="num cell-group-end">Итого</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length === 0 ? `<tr><td colspan="8">Нет точек в data.json для выбранного retention.</td></tr>` : rows.map(r => `
+              <tr>
+                <td><strong>${r.label}</strong> <span style="color:var(--muted);font-size:0.75rem;">(${r.instrument})</span></td>
+                <td class="num">${r.ramGiB.toFixed(2)}</td>
+                <td class="num">${r.cpuCores.toFixed(3)}</td>
+                <td class="num cell-group-end">${r.diskGiB.toFixed(2)}</td>
+                <td class="num">${formatRub(r.costRam)}</td>
+                <td class="num">${formatRub(r.costCpu)}</td>
+                <td class="num">${formatRub(r.costDisk)}</td>
+                <td class="num cell-group-end"><strong>${formatRub(r.total)}</strong></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+        <p class="note">${noteHtml}</p>
+      `;
+      document.getElementById(resultsElId).innerHTML = html;
+    }
+
+    function readTariffs() {
+      return {
+        priceRam: Number(document.getElementById("price-ram").value) || 0,
+        priceCpu: Number(document.getElementById("price-cpu").value) || 0,
+        priceDisk: Number(document.getElementById("price-disk").value) || 0
+      };
+    }
+
+    function renderMetrics() {
+      const retentionDays = getMetricsRetentionDays();
+      const points = buildPointsForInstrumentsAndRetention(RAW_ROWS, METRICS_INSTRUMENTS, retentionDays);
+      const series = Number(document.getElementById("m-series").value) || 0;
+      const { priceRam, priceCpu, priceDisk } = readTariffs();
+      const rows = calcForSection(points, series, priceRam, priceCpu, priceDisk);
+      renderTable(
+        "По возрастанию стоимости (₽/мес)",
+        rows,
+        "results-metrics",
+        `Оценка по введённой <strong>кардинальности</strong> (ось — число series в точках <code>data.json</code>). Retention: <strong>${retentionDays}</strong> ${retentionDays === 1 ? "день" : (retentionDays >= 2 && retentionDays <= 4 ? "дня" : "дней")}. RAM — <code>mem_peak_bytes</code>, диск — <code>disk_bytes</code> (GiB).`
+      );
+    }
+
+    function renderLogs() {
+      const retentionDays = getLogsRetentionDays();
+      const points = buildPointsForInstrumentsAndRetention(RAW_ROWS, LOGS_INSTRUMENTS, retentionDays);
+      const series = Number(document.getElementById("l-series").value) || 0;
+      const { priceRam, priceCpu, priceDisk } = readTariffs();
+      const rows = calcForSection(points, series, priceRam, priceCpu, priceDisk);
+      renderTable(
+        "По возрастанию стоимости (₽/мес)",
+        rows,
+        "results-logs",
+        `Оценка по введённой <strong>скорости строк/с</strong>; те же точки в JSON по-прежнему в поле <code>series</code> (как в ObsBench для Loki / OpenSearch). Retention: <strong>${retentionDays}</strong> ${retentionDays === 1 ? "день" : (retentionDays >= 2 && retentionDays <= 4 ? "дня" : "дней")}. RAM — <code>mem_peak_bytes</code>, диск — <code>disk_bytes</code> (GiB).`
+      );
+    }
+
+    function renderAll() {
+      renderMetrics();
+      renderLogs();
+    }
+
+    for (const id of ["m-series", "l-series", "price-ram", "price-cpu", "price-disk"]) {
+      document.getElementById(id).addEventListener("input", renderAll);
+    }
+    document.getElementById("m-retention-days").addEventListener("change", renderAll);
+    document.getElementById("l-retention-days").addEventListener("change", renderAll);
+
+    loadData().then(() => renderAll());
+  </script>
+</body>
+</html>
