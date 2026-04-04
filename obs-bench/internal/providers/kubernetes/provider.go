@@ -41,7 +41,7 @@ type IKubernetesProvider interface {
 	DeleteVMWebhooks(ctx context.Context) error
 	DeleteVMClusterRoles(ctx context.Context) error
 	DeleteKubePrometheusStackWebhooks(ctx context.Context) error
-	CreateDiskMetricsExporter(ctx context.Context, namespace string, tag string, pvcName string, pvcNamespace string) error
+	CreateDiskMetricsExporter(ctx context.Context, namespace string, tag string, pvcName string) error
 	// WaitForLokiSingleBinaryDataPVC ждёт PVC данных singleBinary по StatefulSet с лейблами чарта grafana/loki.
 	// Имя PVC в Kubernetes: {volumeClaimTemplate.name}-{statefulset.name}-{ordinal} → storage-<sts>-0.
 	WaitForLokiSingleBinaryDataPVC(ctx context.Context, namespace string, timeout time.Duration) (pvcName string, err error)
@@ -651,8 +651,41 @@ func (p *provider) DeleteVMClusterRoles(ctx context.Context) error {
 	return nil
 }
 
-func (p *provider) CreateDiskMetricsExporter(ctx context.Context, namespace string, tag string, pvcName string, pvcNamespace string) error {
+// pvcNodeName возвращает имя ноды, на которой уже смонтирован PVC (Running pod с данным PVC).
+// Если найти не удалось — возвращает "", nil; тогда nodeSelector не выставляется.
+// Это нужно для RWO-томов: Kubernetes разрешает монтировать их только на одном узле,
+// поэтому disk-metrics-exporter должен попасть на ту же ноду, что и инструмент.
+func (p *provider) pvcNodeName(ctx context.Context, namespace, pvcName string) (string, error) {
+	pods, err := p.clientset.CoreV1().Pods(namespace).List(ctx, v1.ListOptions{})
+	if err != nil {
+		return "", err
+	}
+	for _, pod := range pods.Items {
+		if pod.Status.Phase != corev1.PodRunning || pod.Spec.NodeName == "" {
+			continue
+		}
+		for _, vol := range pod.Spec.Volumes {
+			if vol.PersistentVolumeClaim != nil && vol.PersistentVolumeClaim.ClaimName == pvcName {
+				return pod.Spec.NodeName, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+func (p *provider) CreateDiskMetricsExporter(ctx context.Context, namespace string, tag string, pvcName string) error {
 	replicas := int32(1)
+
+	nodeName, err := p.pvcNodeName(ctx, namespace, pvcName)
+	if err != nil {
+		slog.WarnContext(ctx, "could not resolve PVC node, skipping nodeSelector", "pvc", pvcName, "err", err)
+	}
+
+	var nodeSelector map[string]string
+	if nodeName != "" {
+		slog.InfoContext(ctx, "disk-metrics-exporter pinned to node", "node", nodeName, "pvc", pvcName)
+		nodeSelector = map[string]string{"kubernetes.io/hostname": nodeName}
+	}
 
 	deployment := &appsv1.Deployment{
 		ObjectMeta: v1.ObjectMeta{
@@ -670,6 +703,7 @@ func (p *provider) CreateDiskMetricsExporter(ctx context.Context, namespace stri
 					Labels: map[string]string{"app": "disk-metrics-exporter"},
 				},
 				Spec: corev1.PodSpec{
+					NodeSelector: nodeSelector,
 					Volumes: []corev1.Volume{
 						{
 							Name: "vm-data",
@@ -707,7 +741,7 @@ func (p *provider) CreateDiskMetricsExporter(ctx context.Context, namespace stri
 		},
 	}
 
-	_, err := p.clientset.AppsV1().Deployments(namespace).Create(ctx, deployment, v1.CreateOptions{})
+	_, err = p.clientset.AppsV1().Deployments(namespace).Create(ctx, deployment, v1.CreateOptions{})
 	return err
 }
 

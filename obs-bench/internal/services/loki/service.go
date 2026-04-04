@@ -146,7 +146,7 @@ func (s *service) UpLokiStack(ctx context.Context, namespace string, retentionDa
 	if err != nil {
 		return err
 	}
-	if err := s.kubernetesProvider.CreateDiskMetricsExporter(ctx, namespace, tag, pvcName, namespace); err != nil {
+	if err := s.kubernetesProvider.CreateDiskMetricsExporter(ctx, namespace, tag, pvcName); err != nil {
 		return err
 	}
 	if err := s.kubernetesProvider.CreateDiskMetricsService(ctx, namespace); err != nil {

@@ -157,7 +157,6 @@ func (s *service) UpPrometheusStack(ctx context.Context, namespace string, reten
 		namespace,
 		tag,
 		releaseName+"-server",
-		namespace,
 	); err != nil {
 		return err
 	}

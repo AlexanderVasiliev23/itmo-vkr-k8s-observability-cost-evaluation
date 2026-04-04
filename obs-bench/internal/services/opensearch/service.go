@@ -104,7 +104,7 @@ func (s *service) UpOpenSearchStack(ctx context.Context, namespace string, _ int
 	if err := s.dockerRegistryProvider.PushImage(ctx, tag); err != nil {
 		return err
 	}
-	if err := s.kubernetesProvider.CreateDiskMetricsExporter(ctx, namespace, tag, dataPVCName, namespace); err != nil {
+	if err := s.kubernetesProvider.CreateDiskMetricsExporter(ctx, namespace, tag, dataPVCName); err != nil {
 		return err
 	}
 	if err := s.kubernetesProvider.CreateDiskMetricsService(ctx, namespace); err != nil {

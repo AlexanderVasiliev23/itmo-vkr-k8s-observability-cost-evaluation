@@ -125,7 +125,6 @@ func (s *service) UpVictoriaMetricsStack(ctx context.Context, namespace string, 
 		namespace,
 		tag,
 		"vmsingle-victoria-metrics-k8s-stack",
-		namespace,
 	); err != nil {
 		return err
 	}
