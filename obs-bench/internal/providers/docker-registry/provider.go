@@ -29,15 +29,12 @@ func NewDockerRegistryProvider(t DockerRegistryType) (IDockerRegistryProvider, e
 }
 
 func (p *minikubeProvider) PushImage(ctx context.Context, tag string) error {
-	const (
-		executable = "/home/linuxbrew/.linuxbrew/bin/minikube"
-	)
-
-	if _, err := exec.LookPath(executable); err != nil {
-		return fmt.Errorf("minikube executable not found in PATH: %w", err)
+	executable, err := exec.LookPath("minikube")
+	if err != nil {
+		return fmt.Errorf("minikube not found in PATH: %w", err)
 	}
 
-	cmd := exec.Command(executable, "image", "load", tag)
+	cmd := exec.CommandContext(ctx, executable, "image", "load", tag)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
