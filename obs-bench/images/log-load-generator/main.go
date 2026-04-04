@@ -13,11 +13,14 @@ import (
 	"time"
 )
 
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
 func main() {
 	backend := strings.ToLower(strings.TrimSpace(os.Getenv("BACKEND")))
-	lps, _ := strconv.Atoi(os.Getenv("LOGS_PER_SEC"))
-	if lps < 1 {
-		lps = 100
+	lpsStr := strings.TrimSpace(os.Getenv("LOGS_PER_SEC"))
+	lps, err := strconv.Atoi(lpsStr)
+	if err != nil || lps < 1 {
+		log.Fatalf("LOGS_PER_SEC must be a positive integer, got %q", lpsStr)
 	}
 	log.Printf("log-load-generator backend=%s logs_per_sec=%d", backend, lps)
 
@@ -95,7 +98,7 @@ func flushLoki(n int) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -126,7 +129,7 @@ func flushOpenSearch(n int) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-ndjson")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -135,6 +138,11 @@ func flushOpenSearch(n int) error {
 		b, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("opensearch bulk %d: %s", resp.StatusCode, string(b))
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
+	var result struct {
+		Errors bool `json:"errors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.Errors {
+		log.Printf("opensearch bulk: some documents failed to index")
+	}
 	return nil
 }

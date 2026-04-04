@@ -1,7 +1,7 @@
 FROM golang:1.25-alpine AS build
 WORKDIR /app
 COPY go.mod ./
-RUN go mod download || true
+RUN go mod download
 COPY main.go .
 RUN CGO_ENABLED=0 go build -o log-load-generator .
 

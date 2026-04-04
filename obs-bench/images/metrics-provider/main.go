@@ -47,19 +47,42 @@ func main() {
 
 	meter := otel.Meter("metrics-provider")
 
-	histograms := make([]metric2.Float64Histogram, seriesCount)
+	// Один gauge на series — ровно 1 временной ряд на series_id.
+	// Гистограмма создаёт 15 рядов на серию (buckets + sum + count), что
+	// при seriesCount=50k даёт 750k рядов и роняет Prometheus с OOM.
+	gauge, err := meter.Float64ObservableGauge("bench_series_value",
+		metric2.WithDescription("Simulated time-series value for cardinality benchmarking"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	values := make([]float64, seriesCount)
 	for i := range seriesCount {
-		seriesID := fmt.Sprintf("series_%04d", i)
+		values[i] = rand.Float64()
+	}
 
-		histograms[i], err = meter.Float64Histogram("request_duration_seconds",
-			metric2.WithDescription("Simulated request duration distribution"),
-			metric2.WithUnit("s"),
-		)
-		if err != nil {
-			log.Fatal(err)
+	// Обновляем значения в фоне, чтобы метрики не были статичными.
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			for i := range values {
+				values[i] = rand.Float64()
+			}
 		}
+	}()
 
-		go generateSeriesMetrics(histograms[i], seriesID)
+	_, err = meter.RegisterCallback(func(_ context.Context, o metric2.Observer) error {
+		for i := range seriesCount {
+			o.ObserveFloat64(gauge, values[i],
+				metric2.WithAttributes(attribute.String("series_id", fmt.Sprintf("series_%04d", i))),
+			)
+		}
+		return nil
+	}, gauge)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	slog.Info("metrics provider started", "series_count", seriesCount)
@@ -68,13 +91,3 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
-func generateSeriesMetrics(histogram metric2.Float64Histogram, seriesID string) {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	attrs := metric2.WithAttributes(attribute.String("series_id", seriesID))
-
-	for range ticker.C {
-		histogram.Record(context.Background(), rand.Float64()*rand.Float64(), attrs)
-	}
-}
