@@ -56,15 +56,18 @@ func (s *service) UpPrometheusStack(ctx context.Context, namespace string, reten
 		return err
 	}
 
-	if err := s.kubernetesProvider.DeleteNamespace(ctx, namespace); err != nil {
-		return err
-	}
-
 	const (
 		repoURL   = "https://prometheus-community.github.io/helm-charts"
 		chartName = "prometheus"
 	)
 	releaseName := s.releaseName
+
+	if err := s.helmProvider.TryUninstall(ctx, releaseName); err != nil {
+		return err
+	}
+	if err := s.kubernetesProvider.DeleteNamespace(ctx, namespace); err != nil {
+		return err
+	}
 
 	extraScrapeConfigs := fmt.Sprintf(
 		`- job_name: 'metrics-exporter'

@@ -12,8 +12,10 @@ import (
 )
 
 type IOpenSearchService interface {
-	// retentionDays передаётся как параметр методики; физическое управление retention
-	// в OpenSearch выполняется через ISM-политику отдельно от Helm-деплоя.
+	// retentionDays принимается для единообразия интерфейса, но не применяется:
+	// настройка retention в OpenSearch требует ISM-политики через REST API после старта кластера.
+	// Ограничение несущественно для прогонов ≤3h — данные за это время не успевают удаляться
+	// даже при retention=7d. Для прогонов >24h следует создать ISM-политику вручную.
 	UpOpenSearchStack(ctx context.Context, namespace string, retentionDays int) error
 }
 

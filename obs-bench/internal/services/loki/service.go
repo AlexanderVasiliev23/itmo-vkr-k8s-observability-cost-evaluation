@@ -42,6 +42,9 @@ func NewLokiService(
 }
 
 func (s *service) UpLokiStack(ctx context.Context, namespace string, retentionDays int) error {
+	if err := s.helmProvider.TryUninstall(ctx, s.releaseName); err != nil {
+		return err
+	}
 	if err := s.kubernetesProvider.DeleteNamespace(ctx, namespace); err != nil {
 		return err
 	}
