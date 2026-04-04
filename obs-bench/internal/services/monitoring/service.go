@@ -31,6 +31,11 @@ func NewMonitoringService(
 
 func (s *service) UpMonitoring(ctx context.Context) error {
 	namespace := s.cfg.Topology.CentralMonitoring.Namespace
+	releaseName := s.cfg.Topology.CentralMonitoring.StackHelmReleaseName
+
+	if err := s.helmProvider.TryUninstall(ctx, releaseName); err != nil {
+		return err
+	}
 	if err := s.kubernetesProvider.DeleteKubePrometheusStackWebhooks(ctx); err != nil {
 		return err
 	}
@@ -92,7 +97,6 @@ func (s *service) UpMonitoring(ctx context.Context) error {
 		repoURL   = "https://prometheus-community.github.io/helm-charts"
 		chartName = "kube-prometheus-stack"
 	)
-	releaseName := s.cfg.Topology.CentralMonitoring.StackHelmReleaseName
 
 	if err := s.helmProvider.Up(ctx, namespace, vals, repoURL, chartName, releaseName); err != nil {
 		return err
