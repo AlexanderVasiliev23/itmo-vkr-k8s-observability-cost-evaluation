@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 
 	"obs-bench/internal/pkg/portforwardhttp"
 	load_generator_service "obs-bench/internal/services/load-generator"
@@ -12,16 +13,32 @@ import (
 
 var _ load_generator_service.IStackLoadGenerator = &service{}
 
-type service struct{}
+// Три типа запросов имитируют типичную нагрузку Grafana-дашборда над OpenSearch:
+// полный скан, term-фильтр и агрегацию. QPS=1 фиксирован как контрольная переменная —
+// нагрузка на чтение постоянна во всех экспериментах, чтобы изолировать стоимость ingestion.
+var queryBodies = []string{
+	// полный скан — базовый запрос, эквивалент "show all logs"
+	`{"size":10,"query":{"match_all":{}}}`,
+	// term-фильтр по полю level — имитирует Grafana-фильтр по severity
+	`{"size":10,"query":{"term":{"level":"info"}},"sort":[{"@timestamp":{"order":"desc"}}]}`,
+	// агрегация по полю level — имитирует panel с подсчётом ошибок по типу
+	`{"size":0,"aggs":{"by_level":{"terms":{"field":"level","size":10}}}}`,
+}
+
+type service struct {
+	counter atomic.Uint64
+}
 
 func NewOpenSearchLoadGeneratorService() load_generator_service.IStackLoadGenerator {
 	return &service{}
 }
 
 func (s *service) GenerateQueries(ctx context.Context, port int) error {
-	body := strings.NewReader(`{"size":10,"query":{"match_all":{}}}`)
+	idx := s.counter.Add(1) - 1
+	body := queryBodies[idx%uint64(len(queryBodies))]
+
 	u := fmt.Sprintf("http://localhost:%d/logbench/_search", port)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build opensearch search: %w", err)
 	}

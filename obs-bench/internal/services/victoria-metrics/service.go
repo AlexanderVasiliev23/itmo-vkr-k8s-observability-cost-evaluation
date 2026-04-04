@@ -2,6 +2,7 @@ package victoria_metrics
 
 import (
 	"context"
+	"fmt"
 
 	"obs-bench/internal/config"
 	"obs-bench/internal/pkg/diskexporter"
@@ -12,7 +13,7 @@ import (
 )
 
 type IVictoriaMetricsService interface {
-	UpVictoriaMetricsStack(ctx context.Context, namespace string) error
+	UpVictoriaMetricsStack(ctx context.Context, namespace string, retentionDays int) error
 }
 
 type service struct {
@@ -39,7 +40,7 @@ func NewVictoriaMetricsService(
 	}
 }
 
-func (s *service) UpVictoriaMetricsStack(ctx context.Context, namespace string) error {
+func (s *service) UpVictoriaMetricsStack(ctx context.Context, namespace string, retentionDays int) error {
 	tag, err := diskexporter.BuildDevImageTag()
 	if err != nil {
 		return err
@@ -102,6 +103,11 @@ func (s *service) UpVictoriaMetricsStack(ctx context.Context, namespace string) 
 				"extraArgs": map[string]interface{}{
 					"enableTCP6": "true",
 				},
+			},
+		},
+		"vmsingle": map[string]interface{}{
+			"spec": map[string]interface{}{
+				"retentionPeriod": fmt.Sprintf("%dd", retentionDays),
 			},
 		},
 	}

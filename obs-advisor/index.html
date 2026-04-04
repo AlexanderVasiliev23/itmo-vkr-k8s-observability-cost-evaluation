@@ -135,12 +135,17 @@
 
     function rowToPoint(r) {
       const peak = r.mem_peak_bytes != null ? r.mem_peak_bytes : r.mem_avg_bytes;
+      const retDays = r.retention_days != null ? Number(r.retention_days) : RETENTION_DEFAULT_DAYS;
+      // Для масштабирования диска используем фактическую длительность прогона в днях,
+      // а не Helm-retention: при 3h-прогонах данные накоплены за 0.125d, а не за 7d.
+      const durDays = (r.duration_seconds > 0) ? Number(r.duration_seconds) / 86400 : retDays;
       return {
         instrument: r.instrument,
         workload_type: r.workload_type || inferWorkloadType(r.instrument),
         // Backward-compatible: old data may still use `series`.
         series: Number(r.load_value != null ? r.load_value : r.series) || 0,
-        retention_days: r.retention_days != null ? Number(r.retention_days) : RETENTION_DEFAULT_DAYS,
+        retention_days: retDays,
+        duration_days: durDays,
         ram_gib: bytesToGiB(Number(peak) || 0),
         cpu_cores: Number(r.cpu_cores) || 0,
         disk_gib: bytesToGiB(Number(r.disk_bytes) || 0)
@@ -177,7 +182,9 @@
           const alphaDisk = Number(params.alpha_disk ?? 1.0);
           const kCpu = Math.pow(retentionDays / p.retention_days, alphaCpu);
           const kRam = Math.pow(retentionDays / p.retention_days, alphaRam);
-          const kDisk = Math.pow(retentionDays / p.retention_days, alphaDisk);
+          // Диск масштабируется от фактического периода накопленных данных (duration_days),
+          // а не от configured retention.
+          const kDisk = Math.pow(retentionDays / p.duration_days, alphaDisk);
           return {
             ...p,
             retention_days: retentionDays,

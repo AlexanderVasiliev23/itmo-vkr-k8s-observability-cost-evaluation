@@ -175,6 +175,25 @@ func median(vals []float64) float64 {
 	return vals[len(vals)/2]
 }
 
+// measuredPeriodDays возвращает фактический период накопленных данных в днях.
+// Для диска это длительность прогона (не Helm-retention, который не влияет
+// на объём накопленных данных при duration << retention).
+func measuredPeriodDays(r Row) float64 {
+	if r.DurationSeconds > 0 {
+		return r.DurationSeconds / 86400.0
+	}
+	return r.RetentionDays
+}
+
+// periodForKey выбирает правильную ось для масштабирования по retention:
+// для диска — фактическая длительность прогона; для CPU/RAM — configured retention.
+func periodForKey(r Row, resourceKey string) float64 {
+	if resourceKey == "disk_bytes" {
+		return measuredPeriodDays(r)
+	}
+	return r.RetentionDays
+}
+
 func estimateAlphaByRetention(rows []Row, resourceKey string) float64 {
 	byRet := map[float64][]float64{}
 	for _, r := range rows {
@@ -182,7 +201,7 @@ func estimateAlphaByRetention(rows []Row, resourceKey string) float64 {
 		if val <= 0 {
 			continue
 		}
-		byRet[r.RetentionDays] = append(byRet[r.RetentionDays], val)
+		byRet[periodForKey(r, resourceKey)] = append(byRet[periodForKey(r, resourceKey)], val)
 	}
 	if len(byRet) < 2 {
 		switch resourceKey {
@@ -249,7 +268,7 @@ func estimateResource(rows []Row, targetLoad, targetRetention float64, resourceK
 		if base <= 0 {
 			continue
 		}
-		scaled := base * math.Pow(targetRetention/r.RetentionDays, alpha)
+		scaled := base * math.Pow(targetRetention/periodForKey(r, resourceKey), alpha)
 		points = append(points, [2]float64{r.LoadValue, scaled})
 	}
 	return math.Max(0.0, interpolate(points, targetLoad))
@@ -293,9 +312,12 @@ func validateHoldout(rows []Row) map[string]float64 {
 			continue
 		}
 		pred := estimateAll(train, test.LoadValue, test.RetentionDays)
+		// Для диска используем фактический период накопленных данных (duration_days),
+		// а не configured retention — иначе LOO сравнивал бы disk_3h с прогнозом на 7d.
+		predDisk := estimateResource(train, test.LoadValue, measuredPeriodDays(test), "disk_bytes")
 		errs["cpu_cores"] = append(errs["cpu_cores"], mape(test.CPUCores, pred["cpu_cores"]))
 		errs["mem_peak_bytes"] = append(errs["mem_peak_bytes"], mape(test.MemPeakBytes, pred["mem_peak_bytes"]))
-		errs["disk_bytes"] = append(errs["disk_bytes"], mape(test.DiskBytes, pred["disk_bytes"]))
+		errs["disk_bytes"] = append(errs["disk_bytes"], mape(test.DiskBytes, predDisk))
 	}
 	for _, k := range ResourceKeys {
 		if len(errs[k]) == 0 {

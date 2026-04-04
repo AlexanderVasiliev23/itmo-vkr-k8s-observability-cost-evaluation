@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 
 	"obs-bench/internal/pkg/portforwardhttp"
 	load_generator_service "obs-bench/internal/services/load-generator"
@@ -12,19 +13,32 @@ import (
 
 var _ load_generator_service.IStackLoadGenerator = &service{}
 
+// Query API VictoriaMetrics совместим с Prometheus (/api/v1/query, PromQL).
+// Три типа запросов имитируют типичную нагрузку Grafana-дашборда: простой counter,
+// агрегацию и гистограммный перцентиль. QPS=1 фиксирован как контрольная переменная —
+// нагрузка на чтение постоянна во всех экспериментах, чтобы изолировать стоимость ingestion.
+var queries = []string{
+	"rate(request_duration_seconds_count[1m])",
+	"sum by (method) (rate(request_duration_seconds_count[1m]))",
+	"histogram_quantile(0.99, sum by (le) (rate(request_duration_seconds_bucket[5m])))",
+}
+
 type service struct {
+	counter atomic.Uint64
 }
 
 // NewVictoriaMetricsLoadGeneratorService создаёт генератор нагрузки к VictoriaMetrics single-node.
-// Query API совместим с Prometheus (/api/v1/query, PromQL).
 func NewVictoriaMetricsLoadGeneratorService() load_generator_service.IStackLoadGenerator {
 	return &service{}
 }
 
 func (s *service) GenerateQueries(ctx context.Context, port int) error {
+	idx := s.counter.Add(1) - 1
+	query := queries[idx%uint64(len(queries))]
+
 	queryURL := fmt.Sprintf("http://localhost:%d/api/v1/query", port)
 	params := url.Values{}
-	params.Set("query", "rate(request_duration_seconds_count[1m])")
+	params.Set("query", query)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, queryURL+"?"+params.Encode(), nil)
 	if err != nil {

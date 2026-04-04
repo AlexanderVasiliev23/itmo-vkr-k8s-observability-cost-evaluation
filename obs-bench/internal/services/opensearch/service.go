@@ -12,7 +12,9 @@ import (
 )
 
 type IOpenSearchService interface {
-	UpOpenSearchStack(ctx context.Context, namespace string) error
+	// retentionDays передаётся как параметр методики; физическое управление retention
+	// в OpenSearch выполняется через ISM-политику отдельно от Helm-деплоя.
+	UpOpenSearchStack(ctx context.Context, namespace string, retentionDays int) error
 }
 
 type service struct {
@@ -37,7 +39,7 @@ func NewOpenSearchService(
 	}
 }
 
-func (s *service) UpOpenSearchStack(ctx context.Context, namespace string) error {
+func (s *service) UpOpenSearchStack(ctx context.Context, namespace string, _ int) error {
 	const (
 		repoURL   = "https://opensearch-project.github.io/helm-charts"
 		chartName = "opensearch"
@@ -70,6 +72,9 @@ func (s *service) UpOpenSearchStack(ctx context.Context, namespace string) error
 			"size":    "20Gi",
 		},
 		"opensearchJavaOpts": "-Xms512m -Xmx512m",
+		// Лимиты — фиксированные условия эксперимента: предотвращают OOMKill при высокой нагрузке
+		// и обеспечивают воспроизводимость. Значения выбраны с запасом относительно
+		// типичного потребления на тестируемых уровнях нагрузки (≤100k logs/sec).
 		"resources": map[string]interface{}{
 			"limits": map[string]interface{}{
 				"memory": "4Gi",

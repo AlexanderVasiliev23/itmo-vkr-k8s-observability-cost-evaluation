@@ -40,13 +40,13 @@ func NewExperimentUsecase(
 }
 
 func (u *usecase) RunExperiment(ctx context.Context, instrument enum.Instrument, loadValue int, retentionDays int, duration time.Duration) error {
-	// if err := u.monitoringService.UpMonitoring(ctx); err != nil {
-	// 	return err
-	// }
+	if err := u.monitoringService.UpMonitoring(ctx); err != nil {
+		return err
+	}
 
-	// if err := u.instrumentStack.Deploy(ctx, instrument); err != nil {
-	// 	return err
-	// }
+	if err := u.instrumentStack.Deploy(ctx, instrument, retentionDays); err != nil {
+		return err
+	}
 
 	if err := u.instrumentWorkload.Run(ctx, instrument, loadValue, duration); err != nil {
 		return err

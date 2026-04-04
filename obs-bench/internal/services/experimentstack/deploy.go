@@ -12,14 +12,14 @@ import (
 	victoria_metrics "obs-bench/internal/services/victoria-metrics"
 )
 
-// Stack — развёртывание одного целевого стека (Prometheus или VictoriaMetrics) «с нуля».
+// Stack — развёртывание одного целевого стека «с нуля».
 type Stack interface {
-	Deploy(ctx context.Context) error
+	Deploy(ctx context.Context, retentionDays int) error
 }
 
 // InstrumentDeployer — фасад для use case: выбор стека по instrument.
 type InstrumentDeployer interface {
-	Deploy(ctx context.Context, instrument enum.Instrument) error
+	Deploy(ctx context.Context, instrument enum.Instrument, retentionDays int) error
 }
 
 type instrumentRouter struct {
@@ -34,12 +34,12 @@ func NewInstrumentDeployerFromMap(byInstrument map[enum.Instrument]Stack) (Instr
 	return &instrumentRouter{byInstrument: byInstrument}, nil
 }
 
-func (r *instrumentRouter) Deploy(ctx context.Context, inst enum.Instrument) error {
+func (r *instrumentRouter) Deploy(ctx context.Context, inst enum.Instrument, retentionDays int) error {
 	s, err := instr.Lookup(r.byInstrument, inst)
 	if err != nil {
 		return err
 	}
-	return s.Deploy(ctx)
+	return s.Deploy(ctx, retentionDays)
 }
 
 type prometheusStack struct {
@@ -52,8 +52,8 @@ func NewPrometheusStack(svc prometheus.IPrometheusService, target config.Instrum
 	return &prometheusStack{svc: svc, target: target}
 }
 
-func (s *prometheusStack) Deploy(ctx context.Context) error {
-	return s.svc.UpPrometheusStack(ctx, s.target.DeployNamespace)
+func (s *prometheusStack) Deploy(ctx context.Context, retentionDays int) error {
+	return s.svc.UpPrometheusStack(ctx, s.target.DeployNamespace, retentionDays)
 }
 
 type victoriaStack struct {
@@ -66,8 +66,8 @@ func NewVictoriaStack(svc victoria_metrics.IVictoriaMetricsService, target confi
 	return &victoriaStack{svc: svc, target: target}
 }
 
-func (s *victoriaStack) Deploy(ctx context.Context) error {
-	return s.svc.UpVictoriaMetricsStack(ctx, s.target.DeployNamespace)
+func (s *victoriaStack) Deploy(ctx context.Context, retentionDays int) error {
+	return s.svc.UpVictoriaMetricsStack(ctx, s.target.DeployNamespace, retentionDays)
 }
 
 type lokiStack struct {
@@ -79,8 +79,8 @@ func NewLokiStack(svc loki.ILokiService, target config.InstrumentTarget) Stack {
 	return &lokiStack{svc: svc, target: target}
 }
 
-func (s *lokiStack) Deploy(ctx context.Context) error {
-	return s.svc.UpLokiStack(ctx, s.target.DeployNamespace)
+func (s *lokiStack) Deploy(ctx context.Context, retentionDays int) error {
+	return s.svc.UpLokiStack(ctx, s.target.DeployNamespace, retentionDays)
 }
 
 type openSearchStack struct {
@@ -92,6 +92,6 @@ func NewOpenSearchStack(svc opensearch.IOpenSearchService, target config.Instrum
 	return &openSearchStack{svc: svc, target: target}
 }
 
-func (s *openSearchStack) Deploy(ctx context.Context) error {
-	return s.svc.UpOpenSearchStack(ctx, s.target.DeployNamespace)
+func (s *openSearchStack) Deploy(ctx context.Context, retentionDays int) error {
+	return s.svc.UpOpenSearchStack(ctx, s.target.DeployNamespace, retentionDays)
 }

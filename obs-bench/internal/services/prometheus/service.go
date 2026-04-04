@@ -13,7 +13,7 @@ import (
 )
 
 type IPrometheusService interface {
-	UpPrometheusStack(ctx context.Context, namespace string) error
+	UpPrometheusStack(ctx context.Context, namespace string, retentionDays int) error
 }
 
 type service struct {
@@ -42,7 +42,7 @@ func NewPrometheusService(
 	}
 }
 
-func (s *service) UpPrometheusStack(ctx context.Context, namespace string) error {
+func (s *service) UpPrometheusStack(ctx context.Context, namespace string, retentionDays int) error {
 	tag, err := diskexporter.BuildDevImageTag()
 	if err != nil {
 		return err
@@ -68,13 +68,13 @@ func (s *service) UpPrometheusStack(ctx context.Context, namespace string) error
 
 	extraScrapeConfigs := fmt.Sprintf(
 		`- job_name: 'metrics-exporter'
-  scrape_interval: 30s
-  scrape_timeout: 20s
+  scrape_interval: 15s
+  scrape_timeout: 10s
   static_configs:
     - targets: ['metrics-exporter.%s.svc.cluster.local:8080']
 - job_name: 'disk-metrics-exporter'
-  scrape_interval: 30s
-  scrape_timeout: 20s
+  scrape_interval: 15s
+  scrape_timeout: 10s
   static_configs:
     - targets: ['disk-metrics-exporter.%s.svc.cluster.local:8080']`,
 		s.metricsProviderNamespace,
@@ -83,7 +83,7 @@ func (s *service) UpPrometheusStack(ctx context.Context, namespace string) error
 
 	helmValues := map[string]interface{}{
 		"server": map[string]interface{}{
-			"retention": "1h",
+			"retention": fmt.Sprintf("%dd", retentionDays),
 			"persistentVolume": map[string]interface{}{
 				"enabled":   true,
 				"size":      "10Gi",

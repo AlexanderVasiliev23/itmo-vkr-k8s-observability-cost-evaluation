@@ -74,7 +74,7 @@ func (s *service) UpMonitoring(ctx context.Context) error {
 		"prometheus": map[string]interface{}{
 			"enabled": true,
 			"prometheusSpec": map[string]interface{}{
-				"scrapeInterval": "30s",
+				"scrapeInterval": "15s",
 				"resources": map[string]interface{}{
 					"limits": map[string]interface{}{
 						"memory": "4Gi",

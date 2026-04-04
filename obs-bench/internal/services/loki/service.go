@@ -2,6 +2,7 @@ package loki
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"obs-bench/internal/config"
@@ -13,7 +14,7 @@ import (
 )
 
 type ILokiService interface {
-	UpLokiStack(ctx context.Context, namespace string) error
+	UpLokiStack(ctx context.Context, namespace string, retentionDays int) error
 }
 
 type service struct {
@@ -40,7 +41,7 @@ func NewLokiService(
 	}
 }
 
-func (s *service) UpLokiStack(ctx context.Context, namespace string) error {
+func (s *service) UpLokiStack(ctx context.Context, namespace string, retentionDays int) error {
 	if err := s.kubernetesProvider.DeleteNamespace(ctx, namespace); err != nil {
 		return err
 	}
@@ -60,6 +61,12 @@ func (s *service) UpLokiStack(ctx context.Context, namespace string) error {
 			},
 			"storage": map[string]interface{}{
 				"type": "filesystem",
+			},
+			"compactor": map[string]interface{}{
+				"retention_enabled": true,
+			},
+			"limits_config": map[string]interface{}{
+				"retention_period": fmt.Sprintf("%dh", retentionDays*24),
 			},
 			"schemaConfig": map[string]interface{}{
 				"configs": []interface{}{
@@ -82,6 +89,9 @@ func (s *service) UpLokiStack(ctx context.Context, namespace string) error {
 				"enabled": true,
 				"size":    "10Gi",
 			},
+			// Лимиты — фиксированные условия эксперимента: предотвращают OOMKill при высокой нагрузке
+			// и обеспечивают воспроизводимость. Значения выбраны с запасом относительно
+			// типичного потребления на тестируемых уровнях нагрузки (≤100k logs/sec).
 			"resources": map[string]interface{}{
 				"limits": map[string]interface{}{
 					"memory": "3Gi",
