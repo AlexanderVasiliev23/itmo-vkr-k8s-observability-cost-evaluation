@@ -48,7 +48,8 @@ func NewRunExperimentCommand(experimentUsecase experiment_usecase.IExperimentUse
 	// Backward-compatible alias for old experiments scripts.
 	cmd.Flags().IntVar(&myArgs.loadValue, "series", 0, "Alias: load-value")
 	cmd.Flags().IntVar(&myArgs.retentionDays, "retention-days", 7, "retention_days (policy): 1, 7, 30")
-	cmd.Flags().DurationVarP(&myArgs.duration, "duration", "d", time.Second, "Время эксперимента")
+	cmd.Flags().DurationVarP(&myArgs.duration, "duration", "d", 0, "Время эксперимента (обязательный, например 3h)")
+	_ = cmd.MarkFlagRequired("duration")
 	_ = cmd.MarkFlagRequired("instrument")
 
 	return cmd

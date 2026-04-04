@@ -5,7 +5,6 @@ import (
 	"obs-bench/internal/config"
 	"obs-bench/internal/providers/helm"
 	"obs-bench/internal/providers/kubernetes"
-	"os"
 )
 
 type IMonitoringService interface {
@@ -98,21 +97,6 @@ func (s *service) UpMonitoring(ctx context.Context) error {
 	if err := s.helmProvider.Up(ctx, namespace, vals, repoURL, chartName, releaseName); err != nil {
 		return err
 	}
-
-	data, err := os.ReadFile("./resources/grafana/dashboards/my-dashboard.json")
-	if err != nil {
-		return err
-	}
-
-	if err := s.kubernetesProvider.CreateGrafanaDashboard(ctx, namespace, "my-dashboard-configmap", string(data)); err != nil {
-		return err
-	}
-
-	// stopCh, err := s.kubernetesProvider.PortForwardService(ctx, namespace, "kube-prometheus-stack-grafana", 3000, 3000)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer close(stopCh)
 
 	return nil
 }

@@ -222,7 +222,7 @@
 
     async function loadData() {
       try {
-        const res = await fetch("data.json");
+        const res = await fetch("/api/measurements");
         if (!res.ok) throw new Error(res.status + " " + res.statusText);
         const data = await res.json();
         if (Array.isArray(data)) {

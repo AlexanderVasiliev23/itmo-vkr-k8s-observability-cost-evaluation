@@ -29,14 +29,14 @@ const (
 )
 
 type Row struct {
-	Instrument      string
-	WorkloadType    string
-	LoadValue       float64
-	RetentionDays   float64
-	DurationSeconds float64
-	CPUCores        float64
-	MemPeakBytes    float64
-	DiskBytes       float64
+	Instrument      string  `json:"instrument"`
+	WorkloadType    string  `json:"workload_type"`
+	LoadValue       float64 `json:"load_value"`
+	RetentionDays   float64 `json:"retention_days"`
+	DurationSeconds float64 `json:"duration_seconds"`
+	CPUCores        float64 `json:"cpu_cores"`
+	MemPeakBytes    float64 `json:"mem_peak_bytes"`
+	DiskBytes       float64 `json:"disk_bytes"`
 }
 
 type EstimateInput struct {
