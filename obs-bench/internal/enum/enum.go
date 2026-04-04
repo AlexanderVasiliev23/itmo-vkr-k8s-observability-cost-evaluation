@@ -23,16 +23,6 @@ var AllInstruments = []Instrument{
 	InstrumentOpenSearch,
 }
 
-// IsMetricsBackend — метрики (Prometheus / VictoriaMetrics): metrics-provider + PromQL-нагрузка.
-func IsMetricsBackend(i Instrument) bool {
-	switch i {
-	case InstrumentPrometheus, InstrumentVictoriaMetrics:
-		return true
-	default:
-		return false
-	}
-}
-
 // IsLogBackend — логи (Loki / OpenSearch): log-load-generator + query API.
 func IsLogBackend(i Instrument) bool {
 	switch i {

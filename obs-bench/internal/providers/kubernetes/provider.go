@@ -35,7 +35,6 @@ type IKubernetesProvider interface {
 	CreateService(ctx context.Context, namespace string) error
 	CreateServiceMonitor(ctx context.Context, namespace, name, port string, matchLabels map[string]string) error
 	CreateDiskMetricsService(ctx context.Context, namespace string) error
-	CreateGrafanaDashboard(ctx context.Context, namespace, name, dashboardJSON string) error
 	CreateVMServiceScrape(ctx context.Context, namespace string, targetNamespace string) error
 	DeleteVMServiceScrape(ctx context.Context, namespace string) error
 	DeleteVMWebhooks(ctx context.Context) error
@@ -463,22 +462,6 @@ func (p *provider) CreateDiskMetricsService(ctx context.Context, namespace strin
 	}
 
 	_, err := p.clientset.CoreV1().Services(namespace).Create(ctx, svc, v1.CreateOptions{})
-	return err
-}
-
-func (p *provider) CreateGrafanaDashboard(ctx context.Context, namespace, name, dashboardJSON string) error {
-	cm := &corev1.ConfigMap{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    map[string]string{"grafana_dashboard": "1"},
-		},
-		Data: map[string]string{
-			name + ".json": dashboardJSON,
-		},
-	}
-
-	_, err := p.clientset.CoreV1().ConfigMaps(namespace).Create(ctx, cm, v1.CreateOptions{})
 	return err
 }
 
