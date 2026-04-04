@@ -1,6 +1,7 @@
 package commands
 
 import (
+	run_batch "obs-bench/internal/commands/run-batch"
 	run_experiment "obs-bench/internal/commands/run-experiment"
 	experiment_usecase "obs-bench/internal/usecases/experiment"
 
@@ -16,6 +17,7 @@ func NewRootCommand(experimentUsecase experiment_usecase.IExperimentUsecase) *co
 	rootCmd.AddCommand(func() *cobra.Command {
 		return run_experiment.NewRunExperimentCommand(experimentUsecase, &run_experiment.Args{})
 	}())
+	rootCmd.AddCommand(run_batch.NewRunBatchCommand(experimentUsecase))
 
 	return rootCmd
 }
