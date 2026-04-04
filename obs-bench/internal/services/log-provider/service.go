@@ -41,7 +41,7 @@ func NewLogProviderService(
 }
 
 func (s *service) UpLogProvider(ctx context.Context, instrument enum.Instrument, logsPerSec int) error {
-	const contextPath = "./log-load-generator"
+	const contextPath = "./images/log-load-generator"
 
 	hash, err := dirhash.HashDir(contextPath, "", dirhash.Hash1)
 	if err != nil {

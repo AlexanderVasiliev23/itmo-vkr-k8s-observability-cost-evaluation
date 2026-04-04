@@ -36,7 +36,7 @@ func NewMetricsProviderService(
 
 func (s *service) UpMetricsProvider(ctx context.Context, namespace string, series int) error {
 	const (
-		providerDockerfileContextPath = "./metrics-provider"
+		providerDockerfileContextPath = "./images/metrics-provider"
 	)
 
 	hash, err := dirhash.HashDir(providerDockerfileContextPath, "", dirhash.Hash1)

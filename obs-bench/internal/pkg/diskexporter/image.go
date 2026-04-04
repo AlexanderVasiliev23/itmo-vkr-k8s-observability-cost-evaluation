@@ -8,7 +8,7 @@ import (
 )
 
 // ContextPath — каталог с Dockerfile disk-usage-metrics-exporter (от корня модуля obs-bench).
-const ContextPath = "./disk-usage-metrics-exporter"
+const ContextPath = "./images/disk-usage-metrics-exporter"
 
 // BuildDevImageTag — детерминированный локальный тег по хешу исходников exporter'а.
 func BuildDevImageTag() (string, error) {
