@@ -59,7 +59,7 @@ func (s *service) Collect(ctx context.Context, duration time.Duration) (*models.
 
 	baseURL := fmt.Sprintf("http://localhost:%d", s.central.PrometheusLocalPort)
 
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
 	durSec := int(duration.Seconds())
