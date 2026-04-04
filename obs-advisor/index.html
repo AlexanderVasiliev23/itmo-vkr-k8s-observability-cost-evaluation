@@ -76,6 +76,19 @@
     <div id="results-logs" class="results"></div>
   </section>
 
+  <section class="section" aria-labelledby="heading-total">
+    <h2 id="heading-total">Суммарные расходы</h2>
+    <div style="display:flex;gap:1.5rem;margin-bottom:1rem;font-size:0.875rem;">
+      <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;">
+        <input type="checkbox" id="total-include-metrics" checked> Метрики
+      </label>
+      <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;">
+        <input type="checkbox" id="total-include-logs" checked> Логи
+      </label>
+    </div>
+    <div id="results-total"></div>
+  </section>
+
   <section class="section" aria-labelledby="heading-prices">
     <h2 id="heading-prices">Тарифы (общие для метрик и логов)</h2>
     <p class="subtitle" style="margin-top:-0.25rem;margin-bottom:1rem;">Единицы — рубли в месяц за 1 GiB RAM, 1 vCPU и 1 GiB диска.</p>
@@ -312,6 +325,7 @@
         "results-metrics",
         `Оценка по введённой <strong>кардинальности</strong> (ось — число series в точках <code>data.json</code>). Retention: <strong>${retentionDays}</strong> ${retentionDays === 1 ? "день" : (retentionDays >= 2 && retentionDays <= 4 ? "дня" : "дней")}. RAM — <code>mem_peak_bytes</code>, диск — <code>disk_bytes</code> (GiB).`
       );
+      return rows;
     }
 
     function renderLogs() {
@@ -326,11 +340,77 @@
         "results-logs",
         `Оценка по введённой <strong>скорости строк/с</strong>; те же точки в JSON по-прежнему в поле <code>series</code> (как в ObsBench для Loki / OpenSearch). Retention: <strong>${retentionDays}</strong> ${retentionDays === 1 ? "день" : (retentionDays >= 2 && retentionDays <= 4 ? "дня" : "дней")}. RAM — <code>mem_peak_bytes</code>, диск — <code>disk_bytes</code> (GiB).`
       );
+      return rows;
+    }
+
+    function renderTotal(metricsRows, logsRows) {
+      const el = document.getElementById("results-total");
+      const inclMetrics = document.getElementById("total-include-metrics").checked;
+      const inclLogs = document.getElementById("total-include-logs").checked;
+
+      if (!inclMetrics && !inclLogs) return; // защита (не должно случиться)
+
+      const onlyMetrics = inclMetrics && !inclLogs;
+      const onlyLogs = !inclMetrics && inclLogs;
+
+      let combos = [];
+      if (onlyMetrics) {
+        if (metricsRows.length === 0) {
+          el.innerHTML = `<p class="note">Нет данных для метрик.</p>`;
+          return;
+        }
+        combos = metricsRows.map(m => ({ m, l: null, total: m.total }));
+      } else if (onlyLogs) {
+        if (logsRows.length === 0) {
+          el.innerHTML = `<p class="note">Нет данных для логов.</p>`;
+          return;
+        }
+        combos = logsRows.map(l => ({ m: null, l, total: l.total }));
+      } else {
+        if (metricsRows.length === 0 || logsRows.length === 0) {
+          el.innerHTML = `<p class="note">Нет данных для расчёта — заполните секции метрик и логов.</p>`;
+          return;
+        }
+        for (const m of metricsRows) {
+          for (const l of logsRows) {
+            combos.push({ m, l, total: m.total + l.total });
+          }
+        }
+      }
+      combos.sort((a, b) => a.total - b.total);
+
+      const headCols = [
+        inclMetrics ? `<th>Метрики</th>` : "",
+        inclLogs    ? `<th>Логи</th>` : "",
+        inclMetrics ? `<th class="num">Метрики (₽/мес)</th>` : "",
+        inclLogs    ? `<th class="num">Логи (₽/мес)</th>` : "",
+        `<th class="num">Итого (₽/мес)</th>`
+      ].join("");
+
+      const bodyRows = combos.map((c, i) => {
+        const best = i === 0 ? ` style="background:#f0fdf4;"` : "";
+        return `<tr${best}>
+          ${inclMetrics ? `<td><strong>${c.m.label}</strong></td>` : ""}
+          ${inclLogs    ? `<td><strong>${c.l.label}</strong></td>` : ""}
+          ${inclMetrics ? `<td class="num">${formatRub(c.m.total)}</td>` : ""}
+          ${inclLogs    ? `<td class="num">${formatRub(c.l.total)}</td>` : ""}
+          <td class="num"><strong>${formatRub(c.total)}</strong></td>
+        </tr>`;
+      }).join("");
+
+      el.innerHTML = `
+        <table>
+          <thead><tr>${headCols}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+        <p class="note">По возрастанию суммарной стоимости. Выделена наиболее экономичная комбинация.</p>
+      `;
     }
 
     function renderAll() {
-      renderMetrics();
-      renderLogs();
+      const metricsRows = renderMetrics();
+      const logsRows = renderLogs();
+      renderTotal(metricsRows, logsRows);
     }
 
     for (const id of ["m-series", "l-series", "price-ram", "price-cpu", "price-disk"]) {
@@ -338,6 +418,18 @@
     }
     document.getElementById("m-retention-days").addEventListener("change", renderAll);
     document.getElementById("l-retention-days").addEventListener("change", renderAll);
+
+    const cbMetrics = document.getElementById("total-include-metrics");
+    const cbLogs = document.getElementById("total-include-logs");
+    function onTotalToggle(changed, other) {
+      if (!changed.checked && !other.checked) {
+        changed.checked = true; // не даём снять оба
+        return;
+      }
+      renderAll();
+    }
+    cbMetrics.addEventListener("change", () => onTotalToggle(cbMetrics, cbLogs));
+    cbLogs.addEventListener("change", () => onTotalToggle(cbLogs, cbMetrics));
 
     loadData().then(() => renderAll());
   </script>
