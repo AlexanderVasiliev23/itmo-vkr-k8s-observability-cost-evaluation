@@ -122,6 +122,10 @@ outer:
 		}
 
 		if err := w.loadGenerator.GenerateQueries(ctx, instrument, target.QueryLocalPort); err != nil {
+			if transientQueryErr(err) {
+				slog.WarnContext(ctx, "transient query error, skipping tick", "err", err)
+				continue
+			}
 			return err
 		}
 	}

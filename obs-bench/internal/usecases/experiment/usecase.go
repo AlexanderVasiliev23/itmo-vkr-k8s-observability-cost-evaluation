@@ -2,6 +2,7 @@ package experiment_usecase
 
 import (
 	"context"
+	"fmt"
 	"obs-bench/internal/enum"
 	resources_usage_info_storage_provider "obs-bench/internal/providers/resources-usage-info-storage"
 	"obs-bench/internal/services/experimentstack"
@@ -10,6 +11,13 @@ import (
 	resources_usage_info_collector_service "obs-bench/internal/services/resources-usage-info-collector"
 	"time"
 )
+
+// warmupDuration — время прогрева, которое исключается из окна агрегации PromQL-метрик.
+// Инструменты (Prometheus, VictoriaMetrics, Loki, OpenSearch) достигают steady-state
+// через ~20-30 минут после старта нагрузки; метрики за этот период занижены.
+// 15 минут — консервативное значение: достаточно отрезать нестационарный хвост,
+// не теряя слишком много полезного окна при коротких прогонах.
+const warmupDuration = 15 * time.Minute
 
 type IExperimentUsecase interface {
 	RunExperiment(ctx context.Context, instrument enum.Instrument, loadValue int, retentionDays int, duration time.Duration) error
@@ -52,7 +60,12 @@ func (u *usecase) RunExperiment(ctx context.Context, instrument enum.Instrument,
 		return err
 	}
 
-	resourcesUsageInfo, err := u.resourcesCollector.Collect(ctx, instrument, duration)
+	collectWindow := duration - warmupDuration
+	if collectWindow <= 0 {
+		return fmt.Errorf("duration %v is too short: must be longer than warmup %v", duration, warmupDuration)
+	}
+
+	resourcesUsageInfo, err := u.resourcesCollector.Collect(ctx, instrument, collectWindow)
 	if err != nil {
 		return err
 	}
