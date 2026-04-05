@@ -28,6 +28,27 @@ func ResourceQueries(target config.InstrumentTarget, durSeconds int) (cpu, memAv
 	// max_over_time: берём пик за окно сбора — защита от просадок при сжатии/compaction.
 	disk = fmt.Sprintf(`max_over_time(sum(pvc_used_bytes{namespace="%s"})[%ds:30s])`, ns, durSeconds)
 
+	// CadvisorPodSelector: явный pod-regex для Deployment-подов (не StatefulSet).
+	// Приоритет выше CadvisorContainerName и ProcessMetricsJob.
+	if target.CadvisorPodSelector != "" {
+		podRE := target.CadvisorPodSelector
+		const selCPU = `namespace="%s",pod=~"%s",container!="POD",cpu="total"`
+		const selMem = `namespace="%s",pod=~"%s",container!="POD"`
+		cpu = fmt.Sprintf(
+			`avg_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (rate(container_cpu_usage_seconds_total{`+selCPU+`}[1m]))))[%ds:15s])`,
+			ns, podRE, durSeconds,
+		)
+		memAvg = fmt.Sprintf(
+			`avg_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
+			ns, podRE, durSeconds,
+		)
+		memPeak = fmt.Sprintf(
+			`max_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
+			ns, podRE, durSeconds,
+		)
+		return cpu, memAvg, memPeak, disk, nil
+	}
+
 	if target.CadvisorContainerName != "" {
 		if podRE, ok := cadvisorPodSelector(target); ok {
 			const selCPU = `namespace="%s",pod=~"%s",container!="POD",cpu="total"`

@@ -23,8 +23,12 @@ type InstrumentTarget struct {
 	QueryServiceName  string
 	QueryLocalPort    int
 	QueryRemotePort   int
-	ProcessMetricsJob string // kube-prometheus job для process_*; пусто если только CadvisorContainerName
+	ProcessMetricsJob string // kube-prometheus job для process_*; пусто если только cAdvisor
 	PVCQueryNamespace string
+	// CadvisorPodSelector — явный regex для pod при сборке cAdvisor-метрик.
+	// Нужен для Deployment-подов (суффикс <replicaset-hash>-<pod-hash>), где автогенерация ^name-[0-9]+$ не подходит.
+	// Если задан, CadvisorContainerName и ProcessMetricsJob для CPU/RAM не используются.
+	CadvisorPodSelector string
 	// CadvisorContainerName — использовать ветку container_* (kubelet/cAdvisor). Имя pod берётся из HelmReleaseName или QueryServiceName: pod=~^{name}-[0-9]+$.
 	CadvisorContainerName string
 }
@@ -71,22 +75,24 @@ func defaultTopology(prometheusHelmRelease, victoriaSingleService, lokiService, 
 		MetricsProviderNamespace: "metrics-provider",
 		LogProducerNamespace:     "log-producer",
 		Prometheus: InstrumentTarget{
-			DeployNamespace:   "prometheus",
-			HelmReleaseName:   prometheusHelmRelease,
-			QueryServiceName:  prometheusHelmRelease + "-server",
-			QueryLocalPort:    9091,
-			QueryRemotePort:   9090,
-			ProcessMetricsJob: prometheusHelmRelease + "-server",
-			PVCQueryNamespace: "prometheus",
+			DeployNamespace:     "prometheus",
+			HelmReleaseName:     prometheusHelmRelease,
+			QueryServiceName:    prometheusHelmRelease + "-server",
+			QueryLocalPort:      9091,
+			QueryRemotePort:     9090,
+			PVCQueryNamespace:   "prometheus",
+			// Prometheus community chart деплоит Deployment, поды: <release>-server-<rs-hash>-<pod-hash>
+			CadvisorPodSelector: prometheusHelmRelease + "-server-.*",
 		},
 		VictoriaMetrics: InstrumentTarget{
-			DeployNamespace:   "victoria-metrics",
-			HelmReleaseName:   "", // релиз VM chart задаётся внутри victoria-metrics/service
-			QueryServiceName:  victoriaSingleService,
-			QueryLocalPort:    9092,
-			QueryRemotePort:   8428,
-			ProcessMetricsJob: victoriaSingleService,
-			PVCQueryNamespace: "victoria-metrics",
+			DeployNamespace:     "victoria-metrics",
+			HelmReleaseName:     "", // релиз VM chart задаётся внутри victoria-metrics/service
+			QueryServiceName:    victoriaSingleService,
+			QueryLocalPort:      9092,
+			QueryRemotePort:     8428,
+			PVCQueryNamespace:   "victoria-metrics",
+			// VictoriaMetrics single деплоит Deployment, поды: <service>-<rs-hash>-<pod-hash>
+			CadvisorPodSelector: victoriaSingleService + "-.*",
 		},
 		Loki: InstrumentTarget{
 			DeployNamespace:       "loki",
