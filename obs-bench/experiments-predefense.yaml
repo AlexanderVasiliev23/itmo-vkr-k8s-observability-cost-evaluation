@@ -1,36 +1,52 @@
 experiments:
-  # --- Метрики: третья точка для MAPE (~6h) ---
-#  - instrument: prometheus
-#    load_value: 25000
-#    retention_days: 7
-#    duration: 3h
-  - instrument: victoria_metrics
-    load_value: 25000
+  - instrument: prometheus
+    load_value: 10000
+    retention_days: 7
+    duration: 3h
+  - instrument: prometheus
+    load_value: 50000
+    retention_days: 7
+    duration: 3h
+  - instrument: prometheus
+    load_value: 100000
     retention_days: 7
     duration: 3h
 
-  # --- Логи: все точки включая третью для MAPE (~15h) ---
-#  - instrument: loki
-#    load_value: 1000
-#    retention_days: 7
-#    duration: 3h
-#  - instrument: loki
-#    load_value: 2500
-#    retention_days: 7
-#    duration: 3h
-#  - instrument: loki
-#    load_value: 5000
-#    retention_days: 7
-#    duration: 3h
-#  - instrument: opensearch
-#    load_value: 1000
-#    retention_days: 7
-#    duration: 3h
-#  - instrument: opensearch
-#    load_value: 2500
-#    retention_days: 7
-#    duration: 3h
-#  - instrument: opensearch
-#    load_value: 5000
-#    retention_days: 7
-#    duration: 3h
+  - instrument: victoria_metrics
+    load_value: 10000
+    retention_days: 7
+    duration: 3h
+  - instrument: victoria_metrics
+    load_value: 50000
+    retention_days: 7
+    duration: 3h
+  - instrument: victoria_metrics
+    load_value: 100000
+    retention_days: 7
+    duration: 3h
+
+  - instrument: loki
+    load_value: 1000
+    retention_days: 7
+    duration: 1h30m
+  - instrument: loki
+    load_value: 2500
+    retention_days: 7
+    duration: 1h30m
+  - instrument: loki
+    load_value: 5000
+    retention_days: 7
+    duration: 1h30m
+
+  - instrument: opensearch
+    load_value: 1000
+    retention_days: 7
+    duration: 1h30m
+  - instrument: opensearch
+    load_value: 2500
+    retention_days: 7
+    duration: 1h30m
+  - instrument: opensearch
+    load_value: 5000
+    retention_days: 7
+    duration: 1h30m

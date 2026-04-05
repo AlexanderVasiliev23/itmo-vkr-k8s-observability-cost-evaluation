@@ -39,7 +39,7 @@ func NewVictoriaMetricsResourcesUsageInfoCollectorService(
 }
 
 func (s *service) Collect(ctx context.Context, duration time.Duration) (*models.ResourcesUsageInfoModel, error) {
-	if s.target.CadvisorContainerName == "" {
+	if s.target.CadvisorPodSelector == "" && s.target.CadvisorContainerName == "" {
 		if err := promquery.ValidateJobLabel(s.target.ProcessMetricsJob); err != nil {
 			return nil, err
 		}
