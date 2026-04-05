@@ -13,7 +13,7 @@ type Config struct {
 	DockerRegistryType docker_registry.DockerRegistryType
 	StorageDSN         string
 	SQLDebug           bool
-	Topology           Topology
+	Topology           ClusterLayout
 }
 
 func NewConfig() (*Config, error) {
@@ -64,7 +64,7 @@ func NewConfig() (*Config, error) {
 }
 
 // applyTopologyEnvOverrides подставляет значения из env поверх defaultTopology (частичный override).
-func applyTopologyEnvOverrides(t *Topology) {
+func applyTopologyEnvOverrides(t *ClusterLayout) {
 	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_MONITORING_NAMESPACE")); v != "" {
 		t.CentralMonitoring.Namespace = v
 	}

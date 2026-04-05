@@ -8,29 +8,29 @@ import (
 // CentralMonitoring — неймспейс и сервис «центрального» Prometheus (kube-prometheus-stack),
 // через который снимаются метрики целевых стеков и выполняется port-forward в коллекторах.
 type CentralMonitoring struct {
-	Namespace               string
-	PrometheusServiceName   string
-	PrometheusLocalPort     int
-	PrometheusRemotePort    int
-	StackHelmReleaseName    string
+	Namespace             string
+	PrometheusServiceName string
+	PrometheusLocalPort   int
+	PrometheusRemotePort  int
+	StackHelmReleaseName  string
 }
 
 // InstrumentTarget — всё, что нужно для одного инструмента:
 // деплой, query API (port-forward), метрики ресурсов (process_* или cAdvisor) и pvc_used_bytes.
 type InstrumentTarget struct {
-	DeployNamespace       string
-	HelmReleaseName       string // для Prometheus / Loki (лейблы ServiceMonitor)
-	QueryServiceName      string
-	QueryLocalPort        int
-	QueryRemotePort       int
-	ProcessMetricsJob     string // kube-prometheus job для process_*; пусто если только CadvisorContainerName
-	PVCQueryNamespace     string
+	DeployNamespace   string
+	HelmReleaseName   string // для Prometheus / Loki (лейблы ServiceMonitor)
+	QueryServiceName  string
+	QueryLocalPort    int
+	QueryRemotePort   int
+	ProcessMetricsJob string // kube-prometheus job для process_*; пусто если только CadvisorContainerName
+	PVCQueryNamespace string
 	// CadvisorContainerName — использовать ветку container_* (kubelet/cAdvisor). Имя pod берётся из HelmReleaseName или QueryServiceName: pod=~^{name}-[0-9]+$.
 	CadvisorContainerName string
 }
 
-// Topology — единая топология эксперимента (неймспейсы, сервисы, порты).
-type Topology struct {
+// ClusterLayout — единая топология эксперимента (неймспейсы, сервисы, порты).
+type ClusterLayout struct {
 	CentralMonitoring        CentralMonitoring
 	MetricsProviderNamespace string
 	LogProducerNamespace     string // деплой log-load-generator (отдельно от metrics-provider)
@@ -40,7 +40,7 @@ type Topology struct {
 	OpenSearch               InstrumentTarget
 }
 
-func (t *Topology) instrumentTargetsByEnum() map[enum.Instrument]InstrumentTarget {
+func (t *ClusterLayout) instrumentTargetsByEnum() map[enum.Instrument]InstrumentTarget {
 	return map[enum.Instrument]InstrumentTarget{
 		enum.InstrumentPrometheus:      t.Prometheus,
 		enum.InstrumentVictoriaMetrics: t.VictoriaMetrics,
@@ -50,23 +50,23 @@ func (t *Topology) instrumentTargetsByEnum() map[enum.Instrument]InstrumentTarge
 }
 
 // InstrumentTarget возвращает профиль для enum.Instrument.
-func (t *Topology) InstrumentTarget(i enum.Instrument) (InstrumentTarget, error) {
+func (t *ClusterLayout) InstrumentTarget(i enum.Instrument) (InstrumentTarget, error) {
 	return instr.Lookup(t.instrumentTargetsByEnum(), i)
 }
 
 // ValidateInstrumentCoverage проверяет, что топология задаёт цели для всех enum.AllInstruments.
-func (t *Topology) ValidateInstrumentCoverage() error {
+func (t *ClusterLayout) ValidateInstrumentCoverage() error {
 	return enum.EnsureAllInstrumentsInMap(t.instrumentTargetsByEnum())
 }
 
-func defaultTopology(prometheusHelmRelease, victoriaSingleService, lokiService, openSearchService string) Topology {
-	return Topology{
+func defaultTopology(prometheusHelmRelease, victoriaSingleService, lokiService, openSearchService string) ClusterLayout {
+	return ClusterLayout{
 		CentralMonitoring: CentralMonitoring{
-			Namespace:              "monitoring",
-			PrometheusServiceName:  "kube-prometheus-stack-prometheus",
-			PrometheusLocalPort:    9099,
-			PrometheusRemotePort:   9090,
-			StackHelmReleaseName:   "kube-prometheus-stack",
+			Namespace:             "monitoring",
+			PrometheusServiceName: "kube-prometheus-stack-prometheus",
+			PrometheusLocalPort:   9099,
+			PrometheusRemotePort:  9090,
+			StackHelmReleaseName:  "kube-prometheus-stack",
 		},
 		MetricsProviderNamespace: "metrics-provider",
 		LogProducerNamespace:     "log-producer",
