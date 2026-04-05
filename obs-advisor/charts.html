@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ObsBench — графики сравнения</title>
+  <style>
+    :root { --bg: #f5f5f5; --card: #fff; --border: #ddd; --text: #1f2937; --muted: #6b7280; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1.85rem; line-height: 1.5; max-width: 72rem; margin-inline: auto; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.25rem; }
+    h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+    .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
+    .section { background: var(--card); border-radius: 8px; padding: 1.25rem; border: 1px solid var(--border); margin-bottom: 1.25rem; }
+    .charts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+    .chart-wrap { position: relative; }
+    .chart-title { font-size: 0.8rem; color: var(--muted); font-weight: 600; text-align: center; margin-bottom: 0.4rem; letter-spacing: 0.03em; text-transform: uppercase; }
+    .note { font-size: 0.75rem; color: var(--muted); margin-top: 0.75rem; }
+    .no-data { color: var(--muted); font-size: 0.875rem; padding: 2rem 0; text-align: center; }
+    @media (max-width: 640px) { .charts-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>ObsBench — сравнение инструментов по ресурсам</h1>
+  <p class="subtitle">Retention = 7 дней. Маркеры — измеренные точки; линия — модель (линейная интерполяция); полоса — ±20%.</p>
+
+  <section class="section" aria-labelledby="heading-metrics">
+    <h2 id="heading-metrics">Метрики: Prometheus vs VictoriaMetrics</h2>
+    <div class="charts-grid" id="metrics-grid">
+      <div class="chart-wrap"><div class="chart-title">CPU (cores)</div><canvas id="metrics-cpu"></canvas></div>
+      <div class="chart-wrap"><div class="chart-title">RAM пик (GiB)</div><canvas id="metrics-ram"></canvas></div>
+      <div class="chart-wrap"><div class="chart-title">Диск (GiB)</div><canvas id="metrics-disk"></canvas></div>
+    </div>
+    <p class="note" id="metrics-note"></p>
+  </section>
+
+  <section class="section" aria-labelledby="heading-logs">
+    <h2 id="heading-logs">Логи: Loki vs OpenSearch</h2>
+    <div class="charts-grid" id="logs-grid">
+      <div class="chart-wrap"><div class="chart-title">CPU (cores)</div><canvas id="logs-cpu"></canvas></div>
+      <div class="chart-wrap"><div class="chart-title">RAM пик (GiB)</div><canvas id="logs-ram"></canvas></div>
+      <div class="chart-wrap"><div class="chart-title">Диск (GiB)</div><canvas id="logs-disk"></canvas></div>
+    </div>
+    <p class="note" id="logs-note"></p>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script>
+    // ── Цвета инструментов ──────────────────────────────────────────────────
+    const COLORS = {
+      prometheus:       { line: "#3b82f6", point: "#1d4ed8", band: "rgba(59,130,246,0.12)" },
+      victoria_metrics: { line: "#f97316", point: "#c2410c", band: "rgba(249,115,22,0.12)" },
+      loki:             { line: "#8b5cf6", point: "#6d28d9", band: "rgba(139,92,246,0.12)" },
+      opensearch:       { line: "#14b8a6", point: "#0f766e", band: "rgba(20,184,166,0.12)" },
+    };
+
+    const LABELS = {
+      prometheus: "Prometheus",
+      victoria_metrics: "VictoriaMetrics",
+      loki: "Loki",
+      opensearch: "OpenSearch",
+    };
+
+    // ── Интерполяция (повторяет логику Go-модели) ───────────────────────────
+    function segment(p0, p1, x) {
+      const dx = p1[0] - p0[0];
+      if (dx === 0) return p0[1];
+      return p0[1] + ((x - p0[0]) / dx) * (p1[1] - p0[1]);
+    }
+
+    function interpolate(pts, x) {
+      // pts: [[x, y], ...] уже отсортированы
+      if (pts.length === 0) return 0;
+      if (pts.length === 1) return pts[0][1];
+      if (x <= pts[0][0]) return segment(pts[0], pts[1], x);
+      if (x >= pts[pts.length - 1][0]) return segment(pts[pts.length - 2], pts[pts.length - 1], x);
+      for (let i = 0; i < pts.length - 1; i++) {
+        if (x >= pts[i][0] && x <= pts[i + 1][0]) return segment(pts[i], pts[i + 1], x);
+      }
+      return 0;
+    }
+
+    function modelLine(measuredPts, xMin, xMax, n = 80) {
+      const sorted = [...measuredPts].sort((a, b) => a[0] - b[0]);
+      // Небольшой отступ за края для наглядности экстраполяции
+      const pad = (xMax - xMin) * 0.05;
+      const lo = Math.max(0, xMin - pad);
+      const hi = xMax + pad;
+      const step = (hi - lo) / (n - 1);
+      return Array.from({ length: n }, (_, i) => {
+        const x = lo + i * step;
+        return { x, y: Math.max(0, interpolate(sorted, x)) };
+      });
+    }
+
+    // ── Вспомогательное ─────────────────────────────────────────────────────
+    function bytesToGiB(b) { return b / (1024 ** 3); }
+
+    function fmtLoad(v) {
+      if (v >= 1000) return (v / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + "k";
+      return String(v);
+    }
+
+    // ── Построение одного графика ────────────────────────────────────────────
+    function buildChart(canvasId, instrumentList, pointsByInstrument, yLabel, toUnit) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+
+      // Собираем все X для масштаба
+      let allX = [];
+      for (const inst of instrumentList) {
+        for (const [x] of (pointsByInstrument[inst] || [])) allX.push(x);
+      }
+      if (allX.length === 0) return;
+
+      const xMin = Math.min(...allX);
+      const xMax = Math.max(...allX);
+
+      const datasets = [];
+
+      for (const inst of instrumentList) {
+        const pts = pointsByInstrument[inst];
+        if (!pts || pts.length === 0) continue;
+        const c = COLORS[inst];
+        const sorted = [...pts].sort((a, b) => a[0] - b[0]);
+        const line = modelLine(sorted, xMin, xMax);
+        const label = LABELS[inst] || inst;
+
+        // Полоса +20% (верхняя граница)
+        datasets.push({
+          label: `${label} +20%`,
+          data: line.map(p => ({ x: p.x, y: p.y * 1.2 })),
+          borderColor: "transparent",
+          backgroundColor: c.band,
+          pointRadius: 0,
+          fill: "+1",
+          tension: 0,
+          order: 3,
+        });
+        // Полоса -20% (нижняя граница)
+        datasets.push({
+          label: `${label} -20%`,
+          data: line.map(p => ({ x: p.x, y: p.y * 0.8 })),
+          borderColor: "transparent",
+          backgroundColor: c.band,
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+          order: 3,
+        });
+        // Линия модели
+        datasets.push({
+          label,
+          data: line.map(p => ({ x: p.x, y: p.y })),
+          borderColor: c.line,
+          backgroundColor: "transparent",
+          pointRadius: 0,
+          borderWidth: 2,
+          tension: 0,
+          order: 2,
+        });
+        // Измеренные точки
+        datasets.push({
+          label: `${label} (данные)`,
+          data: sorted.map(([x, y]) => ({ x, y })),
+          type: "scatter",
+          borderColor: c.point,
+          backgroundColor: c.point,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          showLine: false,
+          order: 1,
+        });
+      }
+
+      new Chart(canvas, {
+        type: "line",
+        data: { datasets },
+        options: {
+          responsive: true,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: {
+              labels: {
+                // Показываем только основные серии (без band/данные)
+                filter: item => !item.text.includes("+20%") && !item.text.includes("-20%") && !item.text.includes("(данные)"),
+                font: { size: 11 },
+                boxWidth: 12,
+              },
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  if (ctx.dataset.label.includes("+20%") || ctx.dataset.label.includes("-20%")) return null;
+                  const y = ctx.parsed.y;
+                  return `${ctx.dataset.label}: ${y.toFixed(3)} ${yLabel}`;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              type: "linear",
+              title: { display: true, text: "Нагрузка", font: { size: 11 } },
+              ticks: {
+                font: { size: 10 },
+                callback: v => fmtLoad(v),
+              },
+            },
+            y: {
+              title: { display: true, text: yLabel, font: { size: 11 } },
+              ticks: { font: { size: 10 } },
+              min: 0,
+            },
+          },
+        },
+      });
+    }
+
+    // ── Загрузка данных и рендер ─────────────────────────────────────────────
+    async function main() {
+      let rows = [];
+      try {
+        const res = await fetch("/api/measurements");
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        rows = Array.isArray(data) ? data : (data?.measurements ?? []);
+      } catch (e) {
+        console.error(e);
+      }
+
+      // Фильтруем только retention=7d (основные данные)
+      rows = rows.filter(r => r.retention_days === 7);
+
+      // Группируем по типу нагрузки → инструмент → массив [load, value]
+      function groupPoints(wtype, instruments, key) {
+        const out = {};
+        for (const inst of instruments) {
+          out[inst] = rows
+            .filter(r => r.workload_type === wtype && r.instrument === inst && r[key] > 0)
+            .map(r => [r.load_value, key === "cpu_cores" ? r[key] : bytesToGiB(r[key])]);
+        }
+        return out;
+      }
+
+      const metricsInst = ["prometheus", "victoria_metrics"];
+      const logsInst    = ["loki", "opensearch"];
+
+      // Метрики
+      buildChart("metrics-cpu",  metricsInst, groupPoints("metrics", metricsInst, "cpu_cores"),      "cores",  x => x);
+      buildChart("metrics-ram",  metricsInst, groupPoints("metrics", metricsInst, "mem_peak_bytes"), "GiB",    bytesToGiB);
+      buildChart("metrics-disk", metricsInst, groupPoints("metrics", metricsInst, "disk_bytes"),     "GiB",    bytesToGiB);
+
+      // Логи
+      buildChart("logs-cpu",  logsInst, groupPoints("logs", logsInst, "cpu_cores"),      "cores", x => x);
+      buildChart("logs-ram",  logsInst, groupPoints("logs", logsInst, "mem_peak_bytes"), "GiB",   bytesToGiB);
+      buildChart("logs-disk", logsInst, groupPoints("logs", logsInst, "disk_bytes"),     "GiB",   bytesToGiB);
+
+      // Заметки об источниках данных
+      function noteText(wtype, instruments) {
+        const counts = instruments.map(inst => {
+          const n = rows.filter(r => r.workload_type === wtype && r.instrument === inst).length;
+          return `${LABELS[inst]}: ${n} точек`;
+        });
+        return counts.join(" · ");
+      }
+      document.getElementById("metrics-note").textContent = noteText("metrics", metricsInst);
+      document.getElementById("logs-note").textContent    = noteText("logs", logsInst);
+    }
+
+    main();
+  </script>
+</body>
+</html>
