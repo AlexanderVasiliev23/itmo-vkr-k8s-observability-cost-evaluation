@@ -33,6 +33,12 @@
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .note { font-size: 0.75rem; color: var(--muted); margin-top: 1rem; }
     code { font-size: 0.8em; background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 4px; }
+    .row-best td { background: #f0fdf4; }
+    .mape-bar { display: flex; gap: 1rem; margin-top: 0.75rem; flex-wrap: wrap; }
+    .mape-chip { font-size: 0.75rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.2rem 0.5rem; }
+    .mape-chip.ok { color: #15803d; border-color: #bbf7d0; background: #f0fdf4; }
+    .mape-chip.warn { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+    .extrap-warn { font-size: 0.75rem; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 0.3rem 0.6rem; margin-top: 0.5rem; display: inline-block; }
   </style>
 </head>
 <body>
@@ -50,7 +56,7 @@
         </select>
       </div>
       <div class="field">
-        <label>Целевая кардинальность (число series)</label>
+        <label>Кардинальность (число series)</label>
         <input type="number" id="m-series" value="10000" min="1" step="1000" title="Как в ObsBench для Prometheus / VictoriaMetrics">
       </div>
     </div>
@@ -69,7 +75,7 @@
         </select>
       </div>
       <div class="field">
-        <label>Целевая скорость ingestion (строк/с)</label>
+        <label>Скорость ingestion (строк/с)</label>
         <input type="number" id="l-series" value="10000" min="1" step="1000" title="Как в ObsBench: тот же параметр записывается в поле series">
       </div>
     </div>
@@ -109,8 +115,6 @@
   </section>
 
   <script>
-    const METRICS_INSTRUMENTS = new Set(["prometheus", "victoria_metrics"]);
-    const LOGS_INSTRUMENTS = new Set(["loki", "opensearch"]);
     const RETENTION_DEFAULT_DAYS = 7;
 
     const INSTRUMENT_LABEL = {
@@ -120,10 +124,8 @@
       opensearch: "OpenSearch"
     };
 
-    /** @type {Array<object>} */
-    let RAW_ROWS = [];
-    /** @type {object} */
-    let MODEL_PARAMS = {};
+    let METRICS_INSTRUMENTS = [];
+    let LOGS_INSTRUMENTS = [];
 
     function labelInstrument(inst) {
       return INSTRUMENT_LABEL[inst] || inst;
@@ -131,36 +133,6 @@
 
     function bytesToGiB(b) {
       return b / (1024 ** 3);
-    }
-
-    function rowToPoint(r) {
-      const peak = r.mem_peak_bytes != null ? r.mem_peak_bytes : r.mem_avg_bytes;
-      const retDays = r.retention_days != null ? Number(r.retention_days) : RETENTION_DEFAULT_DAYS;
-      // Для масштабирования диска используем фактическую длительность прогона в днях,
-      // а не Helm-retention: при 3h-прогонах данные накоплены за 0.125d, а не за 7d.
-      const durDays = (r.duration_seconds > 0) ? Number(r.duration_seconds) / 86400 : retDays;
-      return {
-        instrument: r.instrument,
-        workload_type: r.workload_type || inferWorkloadType(r.instrument),
-        // Backward-compatible: old data may still use `series`.
-        series: Number(r.load_value != null ? r.load_value : r.series) || 0,
-        retention_days: retDays,
-        duration_days: durDays,
-        ram_gib: bytesToGiB(Number(peak) || 0),
-        cpu_cores: Number(r.cpu_cores) || 0,
-        disk_gib: bytesToGiB(Number(r.disk_bytes) || 0)
-      };
-    }
-
-    function inferWorkloadType(instrument) {
-      return LOGS_INSTRUMENTS.has(instrument) ? "logs" : "metrics";
-    }
-
-    function getModelParams(instrument, workloadType) {
-      const byInst = MODEL_PARAMS?.by_instrument_workload || {};
-      const key = `${instrument}:${workloadType}`;
-      const fallback = MODEL_PARAMS?.default || {};
-      return { ...fallback, ...(byInst[key] || {}) };
     }
 
     function getMetricsRetentionDays() {
@@ -171,108 +143,126 @@
       return Number(document.getElementById("l-retention-days").value) || RETENTION_DEFAULT_DAYS;
     }
 
-    function buildPointsForInstrumentsAndRetention(rows, allowed, retentionDays) {
-      return rows
-        .filter((r) => r && allowed.has(r.instrument))
-        .map(rowToPoint)
-        .map((p) => {
-          const params = getModelParams(p.instrument, p.workload_type);
-          const alphaCpu = Number(params.alpha_cpu ?? 0.15);
-          const alphaRam = Number(params.alpha_ram ?? 0.25);
-          const alphaDisk = Number(params.alpha_disk ?? 1.0);
-          const kCpu = Math.pow(retentionDays / p.retention_days, alphaCpu);
-          const kRam = Math.pow(retentionDays / p.retention_days, alphaRam);
-          // Диск масштабируется от фактического периода накопленных данных (duration_days),
-          // а не от configured retention.
-          const kDisk = Math.pow(retentionDays / p.duration_days, alphaDisk);
-          return {
-            ...p,
-            retention_days: retentionDays,
-            cpu_cores: p.cpu_cores * kCpu,
-            ram_gib: p.ram_gib * kRam,
-            disk_gib: p.disk_gib * kDisk
-          };
-        });
-    }
-
-    function uniqueInstruments(points) {
-      return [...new Set(points.map((p) => p.instrument))];
-    }
-
-    /** Оценка по зависимости от оси нагрузки (`series` в точках); вне точек — по крайнему отрезку. */
-    function interpolateBySeries(points, S, field) {
-      const sorted = [...points].sort((a, b) => a.series - b.series);
-      const n = sorted.length;
-      if (n === 0) return 0;
-      const sMin = sorted[0].series;
-      const sMax = sorted[n - 1].series;
-      const seg = (p0, p1, s) => {
-        const ds = p1.series - p0.series;
-        if (ds === 0) return p0[field];
-        return p0[field] + ((s - p0.series) / ds) * (p1[field] - p0[field]);
-      };
-      if (n === 1) return sorted[0][field];
-      if (S <= sMin) return seg(sorted[0], sorted[1], S);
-      if (S >= sMax) return seg(sorted[n - 2], sorted[n - 1], S);
-      let i = 0;
-      while (i < n - 1 && sorted[i + 1].series < S) i++;
-      const p0 = sorted[i], p1 = sorted[i + 1];
-      return seg(p0, p1, S);
-    }
-
     async function loadData() {
       try {
         const res = await fetch("/api/measurements");
         if (!res.ok) throw new Error(res.status + " " + res.statusText);
         const data = await res.json();
-        if (Array.isArray(data)) {
-          RAW_ROWS = data;
-          MODEL_PARAMS = {};
-        } else if (data && typeof data === "object") {
-          RAW_ROWS = Array.isArray(data.measurements) ? data.measurements : [];
-          MODEL_PARAMS = data.model_params && typeof data.model_params === "object" ? data.model_params : {};
-        } else {
-          RAW_ROWS = [];
-          MODEL_PARAMS = {};
-        }
+        const rows = Array.isArray(data) ? data
+          : Array.isArray(data?.measurements) ? data.measurements : [];
+        METRICS_INSTRUMENTS = [...new Set(
+          rows.filter(r => r.workload_type === "metrics").map(r => r.instrument)
+        )];
+        LOGS_INSTRUMENTS = [...new Set(
+          rows.filter(r => r.workload_type === "logs").map(r => r.instrument)
+        )];
       } catch (e) {
-        RAW_ROWS = [];
-        MODEL_PARAMS = {};
         console.warn(e);
       }
     }
 
-    function calcForSection(points, series, priceRam, priceCpu, priceDisk) {
-      const results = [];
-      for (const inst of uniqueInstruments(points)) {
-        const instPts = points.filter((p) => p.instrument === inst);
-        const ramGiB = interpolateBySeries(instPts, series, "ram_gib");
-        const cpuCores = interpolateBySeries(instPts, series, "cpu_cores");
-        const diskGiB = interpolateBySeries(instPts, series, "disk_gib");
-        const costRam = ramGiB * priceRam;
-        const costCpu = cpuCores * priceCpu;
-        const costDisk = diskGiB * priceDisk;
-        results.push({
-          label: labelInstrument(inst),
-          instrument: inst,
-          costRam,
-          costCpu,
-          costDisk,
-          total: costRam + costCpu + costDisk,
-          ramGiB,
-          cpuCores,
-          diskGiB
-        });
+    async function fetchEstimate(instrument, workloadType, targetLoad, retentionDays) {
+      const url = `/api/estimate?instrument=${encodeURIComponent(instrument)}`
+        + `&workload_type=${encodeURIComponent(workloadType)}`
+        + `&target_load=${targetLoad}`
+        + `&target_retention_days=${retentionDays}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        return await res.json();
+      } catch {
+        return null;
       }
-      results.sort((a, b) => a.total - b.total);
-      return results;
+    }
+
+    async function fetchEstimatesForSection(instruments, workloadType, targetLoad, retentionDays) {
+      const responses = await Promise.all(
+        instruments.map(inst => fetchEstimate(inst, workloadType, targetLoad, retentionDays))
+      );
+      return instruments
+        .map((inst, i) => ({ instrument: inst, response: responses[i] }))
+        .filter(item => item.response?.estimate != null);
+    }
+
+    function calcForSection(estimateItems, priceRam, priceCpu, priceDisk) {
+      return estimateItems
+        .map(({ instrument, response }) => {
+          const est      = response.estimate;
+          const range    = response.range_with_error_budget ?? {};
+          const mape     = response.validation_mape ?? {};
+          const ramGiB   = bytesToGiB(est.mem_peak_bytes);
+          const cpuCores = est.cpu_cores;
+          const diskGiB  = bytesToGiB(est.disk_bytes);
+          const diskGiBMin = range.disk_bytes ? bytesToGiB(range.disk_bytes.min) : null;
+          const diskGiBMax = range.disk_bytes ? bytesToGiB(range.disk_bytes.max) : null;
+          const costRam  = ramGiB * priceRam;
+          const costCpu  = cpuCores * priceCpu;
+          const costDisk = diskGiB * priceDisk;
+          return {
+            label: labelInstrument(instrument),
+            instrument,
+            costRam, costCpu, costDisk,
+            total: costRam + costCpu + costDisk,
+            ramGiB, cpuCores, diskGiB,
+            diskGiBMin, diskGiBMax,
+            mape
+          };
+        })
+        .sort((a, b) => a.total - b.total);
     }
 
     function formatRub(n) {
       return new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
     }
 
-    function renderTable(title, rows, resultsElId, noteHtml) {
+    function mapeChipHtml(mape) {
+      const fields = [
+        { key: "disk_bytes", label: "Диск" },
+        { key: "mem_peak_bytes", label: "RAM" },
+        { key: "cpu_cores", label: "CPU" }
+      ];
+      const chips = fields
+        .filter(f => mape[f.key] != null)
+        .map(f => {
+          const v = mape[f.key];
+          const cls = v <= 0.2 ? "ok" : "warn";
+          return `<span class="mape-chip ${cls}">${f.label} MAPE ${(v * 100).toFixed(0)}%</span>`;
+        });
+      if (chips.length === 0) return "";
+      return `<div class="mape-bar">${chips.join("")}</div>`;
+    }
+
+    function renderTable(title, rows, resultsElId, noteHtml, retentionDays) {
+      const MEASURED_RETENTION = 7; // все прогоны при retention=7d
+      const showExtrapWarn = retentionDays !== MEASURED_RETENTION;
+
+      const tableRows = rows.length === 0
+        ? `<tr><td colspan="9">Нет данных для выбранных параметров.</td></tr>`
+        : rows.map((r, i) => {
+            const bestCls = i === 0 ? ` class="row-best"` : "";
+            const diskRange = (r.diskGiBMin != null && r.diskGiBMax != null)
+              ? ` <span style="color:var(--muted);font-size:0.7rem;">(${r.diskGiBMin.toFixed(1)}–${r.diskGiBMax.toFixed(1)})</span>`
+              : "";
+            return `<tr${bestCls}>
+              <td><strong>${r.label}</strong>${i === 0 ? ' <span style="color:#15803d;font-size:0.7rem;">▼ выгоднее</span>' : ""}</td>
+              <td class="num">${r.ramGiB.toFixed(2)}</td>
+              <td class="num">${r.cpuCores.toFixed(3)}</td>
+              <td class="num cell-group-end">${r.diskGiB.toFixed(2)}${diskRange}</td>
+              <td class="num">${formatRub(r.costRam)}</td>
+              <td class="num">${formatRub(r.costCpu)}</td>
+              <td class="num">${formatRub(r.costDisk)}</td>
+              <td class="num cell-group-end"><strong>${formatRub(r.total)}</strong></td>
+            </tr>`;
+          }).join("");
+
+      // MAPE — одинаков для всех инструментов при LOO, берём первый с данными
+      const mapeRow = rows.find(r => r.mape && Object.values(r.mape).some(v => v != null));
+      const mapeHtml = mapeRow ? mapeChipHtml(mapeRow.mape) : "";
+
+      const extrapHtml = showExtrapWarn
+        ? `<span class="extrap-warn">⚠ Retention ${retentionDays}d отличается от измеренного (7d) — значения экстраполированы по степенному закону.</span>`
+        : "";
+
       const html = `
         <h3>${title}</h3>
         <table>
@@ -292,21 +282,10 @@
               <th class="num cell-group-end">Итого</th>
             </tr>
           </thead>
-          <tbody>
-            ${rows.length === 0 ? `<tr><td colspan="8">Нет точек в data.json для выбранного retention.</td></tr>` : rows.map(r => `
-              <tr>
-                <td><strong>${r.label}</strong> <span style="color:var(--muted);font-size:0.75rem;">(${r.instrument})</span></td>
-                <td class="num">${r.ramGiB.toFixed(2)}</td>
-                <td class="num">${r.cpuCores.toFixed(3)}</td>
-                <td class="num cell-group-end">${r.diskGiB.toFixed(2)}</td>
-                <td class="num">${formatRub(r.costRam)}</td>
-                <td class="num">${formatRub(r.costCpu)}</td>
-                <td class="num">${formatRub(r.costDisk)}</td>
-                <td class="num cell-group-end"><strong>${formatRub(r.total)}</strong></td>
-              </tr>
-            `).join("")}
-          </tbody>
+          <tbody>${tableRows}</tbody>
         </table>
+        ${mapeHtml}
+        ${extrapHtml}
         <p class="note">${noteHtml}</p>
       `;
       document.getElementById(resultsElId).innerHTML = html;
@@ -320,32 +299,36 @@
       };
     }
 
-    function renderMetrics() {
+    async function renderMetrics() {
       const retentionDays = getMetricsRetentionDays();
-      const points = buildPointsForInstrumentsAndRetention(RAW_ROWS, METRICS_INSTRUMENTS, retentionDays);
-      const series = Number(document.getElementById("m-series").value) || 0;
+      const targetLoad = Number(document.getElementById("m-series").value) || 0;
       const { priceRam, priceCpu, priceDisk } = readTariffs();
-      const rows = calcForSection(points, series, priceRam, priceCpu, priceDisk);
+      const estimateItems = await fetchEstimatesForSection(METRICS_INSTRUMENTS, "metrics", targetLoad, retentionDays);
+      const rows = calcForSection(estimateItems, priceRam, priceCpu, priceDisk);
+      const retLabel = retentionDays === 1 ? "день" : retentionDays <= 4 ? "дня" : "дней";
       renderTable(
         "По возрастанию стоимости (₽/мес)",
         rows,
         "results-metrics",
-        `Оценка по введённой <strong>кардинальности</strong> (ось — число series в точках <code>data.json</code>). Retention: <strong>${retentionDays}</strong> ${retentionDays === 1 ? "день" : (retentionDays >= 2 && retentionDays <= 4 ? "дня" : "дней")}. RAM — <code>mem_peak_bytes</code>, диск — <code>disk_bytes</code> (GiB).`
+        `Оценка по введённой <strong>кардинальности</strong>. Retention: <strong>${retentionDays}</strong> ${retLabel}. RAM — пик, диск — максимум за прогон. Модель: интерполяция + степенной закон по retention.`,
+        retentionDays
       );
       return rows;
     }
 
-    function renderLogs() {
+    async function renderLogs() {
       const retentionDays = getLogsRetentionDays();
-      const points = buildPointsForInstrumentsAndRetention(RAW_ROWS, LOGS_INSTRUMENTS, retentionDays);
-      const series = Number(document.getElementById("l-series").value) || 0;
+      const targetLoad = Number(document.getElementById("l-series").value) || 0;
       const { priceRam, priceCpu, priceDisk } = readTariffs();
-      const rows = calcForSection(points, series, priceRam, priceCpu, priceDisk);
+      const estimateItems = await fetchEstimatesForSection(LOGS_INSTRUMENTS, "logs", targetLoad, retentionDays);
+      const rows = calcForSection(estimateItems, priceRam, priceCpu, priceDisk);
+      const retLabel = retentionDays === 1 ? "день" : retentionDays <= 4 ? "дня" : "дней";
       renderTable(
         "По возрастанию стоимости (₽/мес)",
         rows,
         "results-logs",
-        `Оценка по введённой <strong>скорости строк/с</strong>; те же точки в JSON по-прежнему в поле <code>series</code> (как в ObsBench для Loki / OpenSearch). Retention: <strong>${retentionDays}</strong> ${retentionDays === 1 ? "день" : (retentionDays >= 2 && retentionDays <= 4 ? "дня" : "дней")}. RAM — <code>mem_peak_bytes</code>, диск — <code>disk_bytes</code> (GiB).`
+        `Оценка по введённой <strong>скорости ingestion (строк/с)</strong>. Retention: <strong>${retentionDays}</strong> ${retLabel}. RAM — пик, диск — максимум за прогон. Модель: интерполяция + степенной закон по retention.`,
+        retentionDays
       );
       return rows;
     }
@@ -355,23 +338,17 @@
       const inclMetrics = document.getElementById("total-include-metrics").checked;
       const inclLogs = document.getElementById("total-include-logs").checked;
 
-      if (!inclMetrics && !inclLogs) return; // защита (не должно случиться)
+      if (!inclMetrics && !inclLogs) return;
 
       const onlyMetrics = inclMetrics && !inclLogs;
       const onlyLogs = !inclMetrics && inclLogs;
 
       let combos = [];
       if (onlyMetrics) {
-        if (metricsRows.length === 0) {
-          el.innerHTML = `<p class="note">Нет данных для метрик.</p>`;
-          return;
-        }
+        if (metricsRows.length === 0) { el.innerHTML = `<p class="note">Нет данных для метрик.</p>`; return; }
         combos = metricsRows.map(m => ({ m, l: null, total: m.total }));
       } else if (onlyLogs) {
-        if (logsRows.length === 0) {
-          el.innerHTML = `<p class="note">Нет данных для логов.</p>`;
-          return;
-        }
+        if (logsRows.length === 0) { el.innerHTML = `<p class="note">Нет данных для логов.</p>`; return; }
         combos = logsRows.map(l => ({ m: null, l, total: l.total }));
       } else {
         if (metricsRows.length === 0 || logsRows.length === 0) {
@@ -414,14 +391,19 @@
       `;
     }
 
-    function renderAll() {
-      const metricsRows = renderMetrics();
-      const logsRows = renderLogs();
+    async function renderAll() {
+      const [metricsRows, logsRows] = await Promise.all([renderMetrics(), renderLogs()]);
       renderTotal(metricsRows, logsRows);
     }
 
+    let renderTimer = null;
+    function scheduleRender() {
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(() => renderAll(), 300);
+    }
+
     for (const id of ["m-series", "l-series", "price-ram", "price-cpu", "price-disk"]) {
-      document.getElementById(id).addEventListener("input", renderAll);
+      document.getElementById(id).addEventListener("input", scheduleRender);
     }
     document.getElementById("m-retention-days").addEventListener("change", renderAll);
     document.getElementById("l-retention-days").addEventListener("change", renderAll);
@@ -430,7 +412,7 @@
     const cbLogs = document.getElementById("total-include-logs");
     function onTotalToggle(changed, other) {
       if (!changed.checked && !other.checked) {
-        changed.checked = true; // не даём снять оба
+        changed.checked = true;
         return;
       }
       renderAll();
