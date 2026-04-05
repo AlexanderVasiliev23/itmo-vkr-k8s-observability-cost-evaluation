@@ -18,7 +18,7 @@ import (
 func main() {
 	dbPath := flag.String("db", "", "путь до SQLite-базы obs-bench (обязательный)")
 	port := flag.String("port", "8080", "порт HTTP-сервера")
-	staticDir := flag.String("static", "..", "директория со статическими файлами (index.html и т.п.)")
+	staticDir := flag.String("static", ".", "директория со статическими файлами (index.html и т.п.)")
 	flag.Parse()
 
 	if *dbPath == "" {

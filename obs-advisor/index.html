@@ -46,21 +46,22 @@
 
   <section class="section" aria-labelledby="heading-prices">
     <h2 id="heading-prices">Тарифы</h2>
-    <p class="subtitle" style="margin-top:-0.25rem;margin-bottom:1rem;">Рубли в месяц за 1 GiB RAM, 1 vCPU и 1 GiB диска.</p>
+    <p class="subtitle" style="margin-top:-0.25rem;margin-bottom:0.5rem;">Рубли в месяц за 1 GiB RAM, 1 vCPU и 1 GiB диска.</p>
     <div class="form-grid">
       <div class="field">
         <label>RAM (₽ / GiB / месяц)</label>
-        <input type="number" id="price-ram" value="400" min="0" step="10">
+        <input type="number" id="price-ram" value="224" min="0" step="10">
       </div>
       <div class="field">
         <label>CPU (₽ / ядро / месяц)</label>
-        <input type="number" id="price-cpu" value="2500" min="0" step="50">
+        <input type="number" id="price-cpu" value="830" min="0" step="50">
       </div>
       <div class="field">
         <label>Диск (₽ / GiB / месяц)</label>
-        <input type="number" id="price-disk" value="8" min="0" step="1">
+        <input type="number" id="price-disk" value="13" min="0" step="1">
       </div>
     </div>
+    <p class="note" style="margin-top:0.5rem;">Тарифы Yandex Cloud (AMD Zen 4, обычная ВМ, «Быстрый диск SSD»): <a href="https://yandex.cloud/ru/docs/compute/pricing" target="_blank" rel="noopener">yandex.cloud/ru/docs/compute/pricing</a>. Цены за месяц рассчитаны из 720&nbsp;ч.</p>
   </section>
 
   <section class="section" aria-labelledby="heading-metrics">
