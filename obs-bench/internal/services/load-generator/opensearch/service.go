@@ -19,10 +19,10 @@ var _ load_generator_service.IStackLoadGenerator = &service{}
 var queryBodies = []string{
 	// полный скан — базовый запрос, эквивалент "show all logs"
 	`{"size":10,"query":{"match_all":{}}}`,
-	// term-фильтр по полю level — имитирует Grafana-фильтр по severity
-	`{"size":10,"query":{"term":{"level":"info"}},"sort":[{"@timestamp":{"order":"desc"}}]}`,
-	// агрегация по полю level — имитирует panel с подсчётом ошибок по типу
-	`{"size":0,"aggs":{"by_level":{"terms":{"field":"level","size":10}}}}`,
+	// match-фильтр по полю msg + сортировка по ts — имитирует Grafana-фильтр по тексту
+	`{"size":10,"query":{"match":{"msg":"bench"}},"sort":[{"ts":{"order":"desc"}}]}`,
+	// агрегация value_count по полю i — имитирует panel с подсчётом событий
+	`{"size":0,"aggs":{"event_count":{"value_count":{"field":"i"}}}}`,
 }
 
 type service struct {

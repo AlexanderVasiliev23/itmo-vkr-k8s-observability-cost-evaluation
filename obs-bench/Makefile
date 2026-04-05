@@ -1,4 +1,5 @@
 BINARY := obs-bench
+export MINIKUBE_PATH ?= $(shell which minikube 2>/dev/null || echo /home/linuxbrew/.linuxbrew/bin/minikube)
 
 .PHONY: build run-smoke run-predefense clean
 

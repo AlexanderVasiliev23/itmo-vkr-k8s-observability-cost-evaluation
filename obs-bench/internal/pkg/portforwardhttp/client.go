@@ -15,7 +15,7 @@ var Client = &http.Client{
 		// HTTP/2 через SPDY port-forward не нужен и иногда ведёт себя хуже.
 		ForceAttemptHTTP2: false,
 	},
-	Timeout: 60 * time.Second,
+	Timeout: 5 * time.Minute,
 }
 
 // CloseResp полностью читает тело и закрывает ответ (важно до следующего запроса по тому же туннелю).

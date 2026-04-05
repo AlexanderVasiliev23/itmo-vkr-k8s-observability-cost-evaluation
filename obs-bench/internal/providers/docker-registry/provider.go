@@ -3,6 +3,7 @@ package docker_registry
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 )
 
@@ -29,9 +30,13 @@ func NewDockerRegistryProvider(t DockerRegistryType) (IDockerRegistryProvider, e
 }
 
 func (p *minikubeProvider) PushImage(ctx context.Context, tag string) error {
-	executable, err := exec.LookPath("minikube")
-	if err != nil {
-		return fmt.Errorf("minikube not found in PATH: %w", err)
+	executable := os.Getenv("MINIKUBE_PATH")
+	if executable == "" {
+		var err error
+		executable, err = exec.LookPath("minikube")
+		if err != nil {
+			return fmt.Errorf("minikube not found in PATH (set MINIKUBE_PATH env var to override): %w", err)
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, executable, "image", "load", tag)

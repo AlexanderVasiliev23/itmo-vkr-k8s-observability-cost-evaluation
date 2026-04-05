@@ -26,10 +26,10 @@ type querySpec struct {
 var queries = []querySpec{
 	// простой log-stream — самый частый тип запроса в Grafana/Loki
 	{expr: `{job="bench"}`, window: "5m"},
-	// скорость появления строк за окно — метрический LogQL-запрос
-	{expr: `rate({job="bench"}[5m])`, window: "15m"},
-	// количество строк за более длинное окно — нагружает сканирование chunks
-	{expr: `count_over_time({job="bench"}[15m])`, window: "30m"},
+	// скорость появления строк — метрический LogQL-запрос
+	{expr: `rate({job="bench"}[1m])`, window: "5m"},
+	// количество строк за короткое окно — нагружает сканирование chunks
+	{expr: `count_over_time({job="bench"}[5m])`, window: "10m"},
 }
 
 type service struct {

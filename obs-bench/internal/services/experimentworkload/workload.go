@@ -144,7 +144,10 @@ func transientQueryErr(err error) bool {
 	return strings.Contains(s, "connection refused") ||
 		strings.Contains(s, "connection reset") ||
 		strings.Contains(s, "broken pipe") ||
-		strings.Contains(s, "EOF")
+		strings.Contains(s, "EOF") ||
+		// 404 от OpenSearch означает «индекс ещё не создан» — генератор логов
+		// начинает писать асинхронно; нужно подождать появления индекса.
+		strings.Contains(s, "status 404")
 }
 
 // waitForQueryAPI даёт целевому процессу и port-forward время поднять listener (OOM/restart, гонки).

@@ -25,8 +25,8 @@ func cadvisorPodSelector(t config.InstrumentTarget) (podRE string, ok bool) {
 // добавляется при scrape пода (kube-prometheus-stack).
 func ResourceQueries(target config.InstrumentTarget, durSeconds int) (cpu, memAvg, memPeak, disk string, err error) {
 	ns := target.PVCQueryNamespace
-	// sum() агрегирует все PVC в namespace (защита на случай нескольких PVC).
-	disk = fmt.Sprintf(`sum(pvc_used_bytes{namespace="%s"})`, ns)
+	// max_over_time: берём пик за окно сбора — защита от просадок при сжатии/compaction.
+	disk = fmt.Sprintf(`max_over_time(sum(pvc_used_bytes{namespace="%s"})[%ds:30s])`, ns, durSeconds)
 
 	if target.CadvisorContainerName != "" {
 		if podRE, ok := cadvisorPodSelector(target); ok {

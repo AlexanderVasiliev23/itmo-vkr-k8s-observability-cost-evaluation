@@ -1,17 +1,17 @@
 experiments:
-  - instrument: prometheus
-    load_value: 50000
-    retention_days: 7
-    duration: 20m
-  - instrument: victoria_metrics
-    load_value: 50000
-    retention_days: 7
-    duration: 20m
-  - instrument: loki
-    load_value: 50000
-    retention_days: 7
-    duration: 20m
+#  - instrument: prometheus
+#    load_value: 50000
+#    retention_days: 7
+#    duration: 5m
+#  - instrument: victoria_metrics
+#    load_value: 50000
+#    retention_days: 7
+#    duration: 5m
+#  - instrument: loki
+#    load_value: 50000
+#    retention_days: 7
+#    duration: 5m
   - instrument: opensearch
     load_value: 50000
     retention_days: 7
-    duration: 20m
+    duration: 5m

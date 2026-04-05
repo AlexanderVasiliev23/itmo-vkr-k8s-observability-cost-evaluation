@@ -66,7 +66,8 @@ func (s *service) UpLokiStack(ctx context.Context, namespace string, retentionDa
 				"type": "filesystem",
 			},
 			"compactor": map[string]interface{}{
-				"retention_enabled": true,
+				"retention_enabled":    true,
+				"delete_request_store": "filesystem",
 			},
 			"limits_config": map[string]interface{}{
 				"retention_period": fmt.Sprintf("%dh", retentionDays*24),
