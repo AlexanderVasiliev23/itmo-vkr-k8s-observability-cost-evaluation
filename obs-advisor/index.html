@@ -194,11 +194,16 @@
           const costRam  = ramGiB * priceRam;
           const costCpu  = cpuCores * priceCpu;
           const costDisk = diskGiB * priceDisk;
+          const total = costRam + costCpu + costDisk;
+          const totalMin = (ramGiBMin != null && cpuMin != null && diskGiBMin != null)
+            ? ramGiBMin * priceRam + cpuMin * priceCpu + diskGiBMin * priceDisk : null;
+          const totalMax = (ramGiBMax != null && cpuMax != null && diskGiBMax != null)
+            ? ramGiBMax * priceRam + cpuMax * priceCpu + diskGiBMax * priceDisk : null;
           return {
             label: labelInstrument(instrument),
             instrument,
             costRam, costCpu, costDisk,
-            total: costRam + costCpu + costDisk,
+            total, totalMin, totalMax,
             ramGiB, ramGiBMin, ramGiBMax,
             cpuCores, cpuMin, cpuMax,
             diskGiB, diskGiBMin, diskGiBMax,
@@ -257,7 +262,7 @@
               <td class="num">${formatRub(r.costRam)}</td>
               <td class="num">${formatRub(r.costCpu)}</td>
               <td class="num">${formatRub(r.costDisk)}</td>
-              <td class="num cell-group-end"><strong>${formatRub(r.total)}</strong></td>
+              <td class="num cell-group-end"><strong>${formatRub(r.total)}</strong>${r.totalMin != null ? `<br><span style="color:var(--muted);font-size:0.7rem;">(${formatRub(r.totalMin)}–${formatRub(r.totalMax)})</span>` : ""}</td>
             </tr>`;
           }).join("");
 
