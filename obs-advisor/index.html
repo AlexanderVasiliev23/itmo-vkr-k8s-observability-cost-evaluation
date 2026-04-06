@@ -7,7 +7,7 @@
   <style>
     :root { --bg: #f5f5f5; --card: #fff; --border: #ddd; --text: #1f2937; --muted: #6b7280; }
     * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1.85rem; line-height: 1.5; max-width: 56rem; margin-inline: auto; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1.85rem; line-height: 1.5; max-width: 80rem; margin-inline: auto; }
     h1 { font-size: 1.25rem; margin: 0 0 1.25rem; }
     h2 { font-size: 1rem; margin: 0 0 0.75rem; }
     .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
@@ -34,10 +34,9 @@
     .note { font-size: 0.75rem; color: var(--muted); margin-top: 1rem; }
     code { font-size: 0.8em; background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 4px; }
     .row-best td { background: #f0fdf4; }
-    .mape-bar { display: flex; gap: 1rem; margin-top: 0.75rem; flex-wrap: wrap; }
-    .mape-chip { font-size: 0.75rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.2rem 0.5rem; }
-    .mape-chip.ok { color: #15803d; border-color: #bbf7d0; background: #f0fdf4; }
-    .mape-chip.warn { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+    .mape-line { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
+    .mape-ok { color: #15803d; }
+    .mape-warn { color: #b45309; }
     .extrap-warn { font-size: 0.75rem; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 0.3rem 0.6rem; margin-top: 0.5rem; display: inline-block; }
   </style>
 </head>
@@ -186,6 +185,10 @@
           const ramGiB   = bytesToGiB(est.mem_peak_bytes);
           const cpuCores = est.cpu_cores;
           const diskGiB  = bytesToGiB(est.disk_bytes);
+          const ramGiBMin = range.mem_peak_bytes ? bytesToGiB(range.mem_peak_bytes.min) : null;
+          const ramGiBMax = range.mem_peak_bytes ? bytesToGiB(range.mem_peak_bytes.max) : null;
+          const cpuMin = range.cpu_cores ? range.cpu_cores.min : null;
+          const cpuMax = range.cpu_cores ? range.cpu_cores.max : null;
           const diskGiBMin = range.disk_bytes ? bytesToGiB(range.disk_bytes.min) : null;
           const diskGiBMax = range.disk_bytes ? bytesToGiB(range.disk_bytes.max) : null;
           const costRam  = ramGiB * priceRam;
@@ -196,8 +199,9 @@
             instrument,
             costRam, costCpu, costDisk,
             total: costRam + costCpu + costDisk,
-            ramGiB, cpuCores, diskGiB,
-            diskGiBMin, diskGiBMax,
+            ramGiB, ramGiBMin, ramGiBMax,
+            cpuCores, cpuMin, cpuMax,
+            diskGiB, diskGiBMin, diskGiBMax,
             mape
           };
         })
@@ -210,19 +214,20 @@
 
     function mapeChipHtml(mape) {
       const fields = [
-        { key: "disk_bytes", label: "Диск" },
+        { key: "cpu_cores", label: "CPU" },
         { key: "mem_peak_bytes", label: "RAM" },
-        { key: "cpu_cores", label: "CPU" }
+        { key: "disk_bytes", label: "Диск" }
       ];
-      const chips = fields
+      const parts = fields
         .filter(f => mape[f.key] != null)
         .map(f => {
           const v = mape[f.key];
-          const cls = v <= 0.2 ? "ok" : "warn";
-          return `<span class="mape-chip ${cls}">${f.label} MAPE ${(v * 100).toFixed(0)}%</span>`;
+          const cls = v <= 0.2 ? "mape-ok" : "mape-warn";
+          const warn = v > 0.2 ? "⚠" : "";
+          return `<span class="${cls}">${warn}${f.label} ${(v * 100).toFixed(0)}%</span>`;
         });
-      if (chips.length === 0) return "";
-      return `<div class="mape-bar">${chips.join("")}</div>`;
+      if (parts.length === 0) return "";
+      return `<span class="mape-line">LOO: ${parts.join(" · ")}</span>`;
     }
 
     function renderTable(title, rows, resultsElId, noteHtml, retentionDays) {
@@ -233,13 +238,21 @@
         ? `<tr><td colspan="9">Нет данных для выбранных параметров.</td></tr>`
         : rows.map((r, i) => {
             const bestCls = i === 0 ? ` class="row-best"` : "";
+            const ramRange = (r.ramGiBMin != null && r.ramGiBMax != null)
+              ? ` <span style="color:var(--muted);font-size:0.7rem;">(${r.ramGiBMin.toFixed(1)}–${r.ramGiBMax.toFixed(1)})</span>`
+              : "";
+            const cpuRange = (r.cpuMin != null && r.cpuMax != null)
+              ? ` <span style="color:var(--muted);font-size:0.7rem;">(${r.cpuMin.toFixed(3)}–${r.cpuMax.toFixed(3)})</span>`
+              : "";
             const diskRange = (r.diskGiBMin != null && r.diskGiBMax != null)
               ? ` <span style="color:var(--muted);font-size:0.7rem;">(${r.diskGiBMin.toFixed(1)}–${r.diskGiBMax.toFixed(1)})</span>`
               : "";
+            const perRowMape = r.mape && Object.values(r.mape).some(v => v != null)
+              ? `<div style="margin-top:0.25rem;">${mapeChipHtml(r.mape)}</div>` : "";
             return `<tr${bestCls}>
-              <td><strong>${r.label}</strong>${i === 0 ? ' <span style="color:#15803d;font-size:0.7rem;">▼ выгоднее</span>' : ""}</td>
-              <td class="num">${r.ramGiB.toFixed(2)}</td>
-              <td class="num">${r.cpuCores.toFixed(3)}</td>
+              <td><strong>${r.label}</strong>${i === 0 ? ' <span style="color:#15803d;font-size:0.7rem;">▼ выгоднее</span>' : ""}${perRowMape}</td>
+              <td class="num">${r.ramGiB.toFixed(2)}${ramRange}</td>
+              <td class="num">${r.cpuCores.toFixed(3)}${cpuRange}</td>
               <td class="num cell-group-end">${r.diskGiB.toFixed(2)}${diskRange}</td>
               <td class="num">${formatRub(r.costRam)}</td>
               <td class="num">${formatRub(r.costCpu)}</td>
@@ -248,9 +261,7 @@
             </tr>`;
           }).join("");
 
-      // MAPE — одинаков для всех инструментов при LOO, берём первый с данными
-      const mapeRow = rows.find(r => r.mape && Object.values(r.mape).some(v => v != null));
-      const mapeHtml = mapeRow ? mapeChipHtml(mapeRow.mape) : "";
+      const mapeHtml = "";
 
       const extrapHtml = showExtrapWarn
         ? `<span class="extrap-warn">⚠ Retention ${retentionDays}d отличается от измеренного (7d) — значения экстраполированы по степенному закону.</span>`
