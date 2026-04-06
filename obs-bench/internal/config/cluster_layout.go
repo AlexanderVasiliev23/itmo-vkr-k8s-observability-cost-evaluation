@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"obs-bench/internal/enum"
 	instr "obs-bench/internal/instrument"
 )
@@ -91,8 +93,9 @@ func defaultTopology(prometheusHelmRelease, victoriaSingleService, lokiService, 
 			QueryLocalPort:      9092,
 			QueryRemotePort:     8428,
 			PVCQueryNamespace:   "victoria-metrics",
-			// VictoriaMetrics single деплоит Deployment, поды: <service>-<rs-hash>-<pod-hash>
-			CadvisorPodSelector: victoriaSingleService + "-.*",
+			// VictoriaMetrics: vmsingle (storage) + vmagent (scrape) — аналог монолитного Prometheus-сервера.
+			// Оба деплоятся как Deployment, поды: <component>-<stack>-<rs-hash>-<pod-hash>.
+			CadvisorPodSelector: "(vmsingle|vmagent)-" + strings.TrimPrefix(victoriaSingleService, "vmsingle-") + "-.*",
 		},
 		Loki: InstrumentTarget{
 			DeployNamespace:       "loki",
