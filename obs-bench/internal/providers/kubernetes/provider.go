@@ -260,11 +260,48 @@ func (p *provider) RecreateNamespace(ctx context.Context, namespace string) erro
 		return err
 	}
 
+	// Удаляем Released PV от предыдущего прогона, чтобы provisioner очистил данные на диске
+	// до создания нового PVC. Актуально для minikube hostPath: provisioner хранит данные по пути
+	// /tmp/hostpath-provisioner/{namespace}/{pvcName}/ — тот же путь на каждом прогоне.
+	// Если не удалить Released PV, новый PVC может получить директорию с данными предыдущего прогона.
+	p.deleteReleasedPVsForNamespace(ctx, namespace)
+
 	if err := p.CreateNamespace(ctx, namespace); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// deleteReleasedPVsForNamespace удаляет все Released PV, привязанные к указанному namespace.
+// Удаление PV через API сигнализирует provisioner'у удалить backing storage (директорию).
+func (p *provider) deleteReleasedPVsForNamespace(ctx context.Context, namespace string) {
+	pvList, err := p.clientset.CoreV1().PersistentVolumes().List(ctx, v1.ListOptions{})
+	if err != nil {
+		slog.WarnContext(ctx, "deleteReleasedPVs: list PVs", "namespace", namespace, "err", err)
+		return
+	}
+
+	deleted := 0
+	for _, pv := range pvList.Items {
+		if pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.Namespace != namespace {
+			continue
+		}
+		if pv.Status.Phase != corev1.VolumeReleased {
+			continue
+		}
+		if err := p.clientset.CoreV1().PersistentVolumes().Delete(ctx, pv.Name, v1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			slog.WarnContext(ctx, "deleteReleasedPVs: delete PV", "pv", pv.Name, "err", err)
+		} else {
+			deleted++
+		}
+	}
+
+	if deleted > 0 {
+		// Небольшая пауза, чтобы provisioner успел обработать событие и удалить директорию.
+		slog.InfoContext(ctx, "deleteReleasedPVs: ждём очистки provisioner", "namespace", namespace, "deleted", deleted)
+		time.Sleep(3 * time.Second)
+	}
 }
 
 func (p *provider) CreateMetricsExporterDeployment(ctx context.Context, namespace string, tag string, series int) error {
