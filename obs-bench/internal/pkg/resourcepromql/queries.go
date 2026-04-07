@@ -34,16 +34,17 @@ func ResourceQueries(target config.InstrumentTarget, durSeconds int) (cpu, memAv
 		podRE := target.CadvisorPodSelector
 		const selCPU = `namespace="%s",pod=~"%s",container!="POD",cpu="total"`
 		const selMem = `namespace="%s",pod=~"%s",container!="POD"`
+		// sum без by (pod) — агрегируем все поды в один скаляр, иначе Result[0] вернёт случайный под.
 		cpu = fmt.Sprintf(
-			`avg_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (rate(container_cpu_usage_seconds_total{`+selCPU+`}[1m]))))[%ds:15s])`,
+			`avg_over_time((sum(max by (namespace, pod, id) (rate(container_cpu_usage_seconds_total{`+selCPU+`}[1m]))))[%ds:15s])`,
 			ns, podRE, durSeconds,
 		)
 		memAvg = fmt.Sprintf(
-			`avg_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
+			`avg_over_time((sum(max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
 			ns, podRE, durSeconds,
 		)
 		memPeak = fmt.Sprintf(
-			`max_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
+			`max_over_time((sum(max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
 			ns, podRE, durSeconds,
 		)
 		return cpu, memAvg, memPeak, disk, nil
@@ -53,16 +54,17 @@ func ResourceQueries(target config.InstrumentTarget, durSeconds int) (cpu, memAv
 		if podRE, ok := cadvisorPodSelector(target); ok {
 			const selCPU = `namespace="%s",pod=~"%s",container!="POD",cpu="total"`
 			const selMem = `namespace="%s",pod=~"%s",container!="POD"`
+			// sum без by (pod) — агрегируем все поды в один скаляр.
 			cpu = fmt.Sprintf(
-				`avg_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (rate(container_cpu_usage_seconds_total{`+selCPU+`}[1m]))))[%ds:15s])`,
+				`avg_over_time((sum(max by (namespace, pod, id) (rate(container_cpu_usage_seconds_total{`+selCPU+`}[1m]))))[%ds:15s])`,
 				ns, podRE, durSeconds,
 			)
 			memAvg = fmt.Sprintf(
-				`avg_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
+				`avg_over_time((sum(max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
 				ns, podRE, durSeconds,
 			)
 			memPeak = fmt.Sprintf(
-				`max_over_time((sum by (namespace, pod) (max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
+				`max_over_time((sum(max by (namespace, pod, id) (container_memory_working_set_bytes{`+selMem+`})))[%ds:15s])`,
 				ns, podRE, durSeconds,
 			)
 			return cpu, memAvg, memPeak, disk, nil
