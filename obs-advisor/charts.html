@@ -31,7 +31,6 @@
       <div class="chart-wrap"><div class="chart-title">RAM пик (GiB)</div><canvas id="metrics-ram"></canvas></div>
       <div class="chart-wrap"><div class="chart-title">Диск (GiB)</div><canvas id="metrics-disk"></canvas></div>
     </div>
-    <p class="note" id="metrics-note"></p>
   </section>
 
   <section class="section" aria-labelledby="heading-logs">
@@ -41,7 +40,6 @@
       <div class="chart-wrap"><div class="chart-title">RAM пик (GiB)</div><canvas id="logs-ram"></canvas></div>
       <div class="chart-wrap"><div class="chart-title">Диск (GiB)</div><canvas id="logs-disk"></canvas></div>
     </div>
-    <p class="note" id="logs-note"></p>
   </section>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -102,7 +100,7 @@
     }
 
     // ── Построение одного графика ────────────────────────────────────────────
-    function buildChart(canvasId, instrumentList, pointsByInstrument, yLabel, toUnit) {
+    function buildChart(canvasId, instrumentList, pointsByInstrument, yLabel, toUnit, xLabel = "Нагрузка") {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
 
@@ -201,7 +199,7 @@
           scales: {
             x: {
               type: "linear",
-              title: { display: true, text: "Нагрузка", font: { size: 11 } },
+              title: { display: true, text: xLabel, font: { size: 11 } },
               ticks: {
                 font: { size: 10 },
                 callback: v => fmtLoad(v),
@@ -247,25 +245,15 @@
       const logsInst    = ["loki", "opensearch"];
 
       // Метрики
-      buildChart("metrics-cpu",  metricsInst, groupPoints("metrics", metricsInst, "cpu_cores"),      "cores",  x => x);
-      buildChart("metrics-ram",  metricsInst, groupPoints("metrics", metricsInst, "mem_peak_bytes"), "GiB",    bytesToGiB);
-      buildChart("metrics-disk", metricsInst, groupPoints("metrics", metricsInst, "disk_bytes"),     "GiB",    bytesToGiB);
+      buildChart("metrics-cpu",  metricsInst, groupPoints("metrics", metricsInst, "cpu_cores"),      "cores",  x => x,     "Кардинальность (series)");
+      buildChart("metrics-ram",  metricsInst, groupPoints("metrics", metricsInst, "mem_peak_bytes"), "GiB",    bytesToGiB, "Кардинальность (series)");
+      buildChart("metrics-disk", metricsInst, groupPoints("metrics", metricsInst, "disk_bytes"),     "GiB",    bytesToGiB, "Кардинальность (series)");
 
       // Логи
-      buildChart("logs-cpu",  logsInst, groupPoints("logs", logsInst, "cpu_cores"),      "cores", x => x);
-      buildChart("logs-ram",  logsInst, groupPoints("logs", logsInst, "mem_peak_bytes"), "GiB",   bytesToGiB);
-      buildChart("logs-disk", logsInst, groupPoints("logs", logsInst, "disk_bytes"),     "GiB",   bytesToGiB);
+      buildChart("logs-cpu",  logsInst, groupPoints("logs", logsInst, "cpu_cores"),      "cores", x => x,     "Скорость ingestion (строк/с)");
+      buildChart("logs-ram",  logsInst, groupPoints("logs", logsInst, "mem_peak_bytes"), "GiB",   bytesToGiB, "Скорость ingestion (строк/с)");
+      buildChart("logs-disk", logsInst, groupPoints("logs", logsInst, "disk_bytes"),     "GiB",   bytesToGiB, "Скорость ingestion (строк/с)");
 
-      // Заметки об источниках данных
-      function noteText(wtype, instruments) {
-        const counts = instruments.map(inst => {
-          const n = rows.filter(r => r.workload_type === wtype && r.instrument === inst).length;
-          return `${LABELS[inst]}: ${n} точек`;
-        });
-        return counts.join(" · ");
-      }
-      document.getElementById("metrics-note").textContent = noteText("metrics", metricsInst);
-      document.getElementById("logs-note").textContent    = noteText("logs", logsInst);
     }
 
     main();
