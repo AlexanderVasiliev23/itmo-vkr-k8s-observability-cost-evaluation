@@ -45,7 +45,7 @@
 
   <section class="section" aria-labelledby="heading-prices">
     <h2 id="heading-prices">Тарифы</h2>
-    <p class="subtitle" style="margin-top:-0.25rem;margin-bottom:0.5rem;">Рубли в месяц за 1 GiB RAM, 1 vCPU и 1 GiB диска.</p>
+    <p class="subtitle" style="margin-top:-0.25rem;margin-bottom:0.5rem;">Рубли в месяц за 1 GiB RAM, 1 ядро CPU и 1 GiB диска.</p>
     <div class="form-grid">
       <div class="field">
         <label>RAM (₽ / GiB / месяц)</label>
@@ -95,7 +95,7 @@
       </div>
       <div class="field">
         <label>Скорость ingestion (строк/с)</label>
-        <input type="number" id="l-series" value="10000" min="1" step="1000" title="Как в ObsBench: тот же параметр записывается в поле series">
+        <input type="number" id="l-series" value="10000" min="1" step="1000">
       </div>
     </div>
     <div id="results-logs" class="results"></div>
@@ -287,7 +287,7 @@
               <th class="num cell-group-end">Диск, GiB</th>
               <th class="num">RAM</th>
               <th class="num">CPU</th>
-              <th class="num">Хранилище</th>
+              <th class="num">Диск</th>
               <th class="num cell-group-end">Итого</th>
             </tr>
           </thead>
@@ -319,7 +319,7 @@
         "По возрастанию стоимости (₽/мес)",
         rows,
         "results-metrics",
-        `Оценка по введённой <strong>кардинальности</strong>. Retention: <strong>${retentionDays}</strong> ${retLabel}. RAM — пик, диск — максимум за прогон. Модель: интерполяция + степенной закон по retention.`,
+        `Оценка по введённой <strong>кардинальности</strong>. Retention: <strong>${retentionDays}</strong> ${retLabel}. RAM — пиковое потребление, диск — оценка на указанный retention. Модель: интерполяция + степенной закон по retention.`,
         retentionDays
       );
       return rows;
@@ -336,7 +336,7 @@
         "По возрастанию стоимости (₽/мес)",
         rows,
         "results-logs",
-        `Оценка по введённой <strong>скорости ingestion (строк/с)</strong>. Retention: <strong>${retentionDays}</strong> ${retLabel}. RAM — пик, диск — максимум за прогон. Модель: интерполяция + степенной закон по retention.`,
+        `Оценка по введённой <strong>скорости ingestion (строк/с)</strong>. Retention: <strong>${retentionDays}</strong> ${retLabel}. RAM — пиковое потребление, диск — оценка на указанный retention. Модель: интерполяция + степенной закон по retention.`,
         retentionDays
       );
       return rows;
