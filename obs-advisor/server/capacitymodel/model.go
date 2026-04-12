@@ -1,10 +1,8 @@
 package capacitymodel
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
-	"os"
 	"sort"
 )
 
@@ -54,76 +52,6 @@ func InferWorkloadType(instrument string) string {
 	return "metrics"
 }
 
-func toFloat(v any, def float64) float64 {
-	switch t := v.(type) {
-	case float64:
-		return t
-	case float32:
-		return float64(t)
-	case int:
-		return float64(t)
-	case int64:
-		return float64(t)
-	case json.Number:
-		f, err := t.Float64()
-		if err != nil {
-			return def
-		}
-		return f
-	default:
-		return def
-	}
-}
-
-func LoadRows(path string) ([]Row, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var raw []map[string]any
-	if err := json.Unmarshal(b, &raw); err != nil {
-		// Поддерживаем расширенный формат: { "measurements": [...], "model_params": ... }.
-		var wrapped struct {
-			Measurements []map[string]any `json:"measurements"`
-		}
-		if err2 := json.Unmarshal(b, &wrapped); err2 != nil {
-			return nil, err
-		}
-		raw = wrapped.Measurements
-	}
-
-	rows := make([]Row, 0, len(raw))
-	for _, item := range raw {
-		instrument, _ := item["instrument"].(string)
-		if instrument == "" {
-			continue
-		}
-		workloadType, _ := item["workload_type"].(string)
-		if workloadType == "" {
-			workloadType = InferWorkloadType(instrument)
-		}
-
-		loadValue := toFloat(item["load_value"], toFloat(item["series"], 0))
-		retentionDays := toFloat(item["retention_days"], 7)
-		durationSeconds := toFloat(item["duration_seconds"], 0)
-		if loadValue <= 0 || retentionDays <= 0 {
-			continue
-		}
-
-		memPeak := toFloat(item["mem_peak_bytes"], toFloat(item["mem_avg_bytes"], 0))
-		rows = append(rows, Row{
-			Instrument:      instrument,
-			WorkloadType:    workloadType,
-			LoadValue:       loadValue,
-			RetentionDays:   retentionDays,
-			DurationSeconds: durationSeconds,
-			CPUCores:        toFloat(item["cpu_cores"], 0),
-			MemPeakBytes:    memPeak,
-			DiskBytes:       toFloat(item["disk_bytes"], 0),
-		})
-	}
-	return rows, nil
-}
 
 func keyVal(r Row, key string) float64 {
 	switch key {
