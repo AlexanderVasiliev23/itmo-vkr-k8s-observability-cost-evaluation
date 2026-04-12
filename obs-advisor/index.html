@@ -152,11 +152,12 @@
       }
     }
 
-    async function fetchEstimate(instrument, workloadType, targetLoad, retentionDays) {
+    async function fetchEstimate(instrument, workloadType, targetLoad, retentionDays, priceRam, priceCpu, priceDisk) {
       const url = `/api/estimate?instrument=${encodeURIComponent(instrument)}`
         + `&workload_type=${encodeURIComponent(workloadType)}`
         + `&target_load=${targetLoad}`
-        + `&target_retention_days=${retentionDays}`;
+        + `&target_retention_days=${retentionDays}`
+        + `&price_ram=${priceRam}&price_cpu=${priceCpu}&price_disk=${priceDisk}`;
       try {
         const res = await fetch(url);
         if (!res.ok) return null;
@@ -166,46 +167,40 @@
       }
     }
 
-    async function fetchEstimatesForSection(instruments, workloadType, targetLoad, retentionDays) {
+    async function fetchEstimatesForSection(instruments, workloadType, targetLoad, retentionDays, priceRam, priceCpu, priceDisk) {
       const responses = await Promise.all(
-        instruments.map(inst => fetchEstimate(inst, workloadType, targetLoad, retentionDays))
+        instruments.map(inst => fetchEstimate(inst, workloadType, targetLoad, retentionDays, priceRam, priceCpu, priceDisk))
       );
       return instruments
         .map((inst, i) => ({ instrument: inst, response: responses[i] }))
         .filter(item => item.response?.estimate != null);
     }
 
-    function calcForSection(estimateItems, priceRam, priceCpu, priceDisk) {
+    function calcForSection(estimateItems) {
       return estimateItems
         .map(({ instrument, response }) => {
-          const est      = response.estimate;
-          const range    = response.range_with_error_budget ?? {};
-          const mape     = response.validation_mape ?? {};
-          const ramGiB   = bytesToGiB(est.mem_peak_bytes);
-          const cpuCores = est.cpu_cores;
-          const diskGiB  = bytesToGiB(est.disk_bytes);
-          const ramGiBMin = range.mem_peak_bytes ? bytesToGiB(range.mem_peak_bytes.min) : null;
-          const ramGiBMax = range.mem_peak_bytes ? bytesToGiB(range.mem_peak_bytes.max) : null;
-          const cpuMin = range.cpu_cores ? range.cpu_cores.min : null;
-          const cpuMax = range.cpu_cores ? range.cpu_cores.max : null;
-          const diskGiBMin = range.disk_bytes ? bytesToGiB(range.disk_bytes.min) : null;
-          const diskGiBMax = range.disk_bytes ? bytesToGiB(range.disk_bytes.max) : null;
-          const costRam  = ramGiB * priceRam;
-          const costCpu  = cpuCores * priceCpu;
-          const costDisk = diskGiB * priceDisk;
-          const total = costRam + costCpu + costDisk;
-          const totalMin = (ramGiBMin != null && cpuMin != null && diskGiBMin != null)
-            ? ramGiBMin * priceRam + cpuMin * priceCpu + diskGiBMin * priceDisk : null;
-          const totalMax = (ramGiBMax != null && cpuMax != null && diskGiBMax != null)
-            ? ramGiBMax * priceRam + cpuMax * priceCpu + diskGiBMax * priceDisk : null;
+          const est   = response.estimate;
+          const range = response.range_with_error_budget ?? {};
+          const cost  = response.cost ?? {};
+          const mape  = response.validation_mape ?? {};
           return {
             label: labelInstrument(instrument),
             instrument,
-            costRam, costCpu, costDisk,
-            total, totalMin, totalMax,
-            ramGiB, ramGiBMin, ramGiBMax,
-            cpuCores, cpuMin, cpuMax,
-            diskGiB, diskGiBMin, diskGiBMax,
+            costRam:  cost.ram  ?? 0,
+            costCpu:  cost.cpu  ?? 0,
+            costDisk: cost.disk ?? 0,
+            total:    cost.total     ?? 0,
+            totalMin: cost.total_min ?? null,
+            totalMax: cost.total_max ?? null,
+            ramGiB:    bytesToGiB(est.mem_peak_bytes),
+            ramGiBMin: range.mem_peak_bytes ? bytesToGiB(range.mem_peak_bytes.min) : null,
+            ramGiBMax: range.mem_peak_bytes ? bytesToGiB(range.mem_peak_bytes.max) : null,
+            cpuCores: est.cpu_cores,
+            cpuMin:   range.cpu_cores?.min ?? null,
+            cpuMax:   range.cpu_cores?.max ?? null,
+            diskGiB:    bytesToGiB(est.disk_bytes),
+            diskGiBMin: range.disk_bytes ? bytesToGiB(range.disk_bytes.min) : null,
+            diskGiBMax: range.disk_bytes ? bytesToGiB(range.disk_bytes.max) : null,
             mape
           };
         })
@@ -311,8 +306,8 @@
       const retentionDays = getMetricsRetentionDays();
       const targetLoad = Number(document.getElementById("m-series").value) || 0;
       const { priceRam, priceCpu, priceDisk } = readTariffs();
-      const estimateItems = await fetchEstimatesForSection(METRICS_INSTRUMENTS, "metrics", targetLoad, retentionDays);
-      const rows = calcForSection(estimateItems, priceRam, priceCpu, priceDisk);
+      const estimateItems = await fetchEstimatesForSection(METRICS_INSTRUMENTS, "metrics", targetLoad, retentionDays, priceRam, priceCpu, priceDisk);
+      const rows = calcForSection(estimateItems);
       const retLabel = retentionDays === 1 ? "день" : retentionDays <= 4 ? "дня" : "дней";
       renderTable(
         "По возрастанию стоимости (₽/мес)",
@@ -328,8 +323,8 @@
       const retentionDays = getLogsRetentionDays();
       const targetLoad = Number(document.getElementById("l-series").value) || 0;
       const { priceRam, priceCpu, priceDisk } = readTariffs();
-      const estimateItems = await fetchEstimatesForSection(LOGS_INSTRUMENTS, "logs", targetLoad, retentionDays);
-      const rows = calcForSection(estimateItems, priceRam, priceCpu, priceDisk);
+      const estimateItems = await fetchEstimatesForSection(LOGS_INSTRUMENTS, "logs", targetLoad, retentionDays, priceRam, priceCpu, priceDisk);
+      const rows = calcForSection(estimateItems);
       const retLabel = retentionDays === 1 ? "день" : retentionDays <= 4 ? "дня" : "дней";
       renderTable(
         "По возрастанию стоимости (₽/мес)",

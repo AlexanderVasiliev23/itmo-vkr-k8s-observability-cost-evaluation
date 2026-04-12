@@ -70,13 +70,19 @@ func main() {
 		if errorBudget == 0 {
 			errorBudget = capacitymodel.QualityTargetMAPEDisk
 		}
+		priceRAM, _ := strconv.ParseFloat(q.Get("price_ram"), 64)
+		priceCPU, _ := strconv.ParseFloat(q.Get("price_cpu"), 64)
+		priceDisk, _ := strconv.ParseFloat(q.Get("price_disk"), 64)
 
 		report, err := capacitymodel.BuildReport(rows, capacitymodel.EstimateInput{
-			Instrument:          q.Get("instrument"),
-			WorkloadType:        q.Get("workload_type"),
-			TargetLoad:          targetLoad,
-			TargetRetentionDays: targetRetention,
-			ErrorBudget:         errorBudget,
+			Instrument:           q.Get("instrument"),
+			WorkloadType:         q.Get("workload_type"),
+			TargetLoad:           targetLoad,
+			TargetRetentionDays:  targetRetention,
+			ErrorBudget:          errorBudget,
+			PriceRAMPerGiBMonth:  priceRAM,
+			PriceCPUPerCoreMonth: priceCPU,
+			PriceDiskPerGiBMonth: priceDisk,
 		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

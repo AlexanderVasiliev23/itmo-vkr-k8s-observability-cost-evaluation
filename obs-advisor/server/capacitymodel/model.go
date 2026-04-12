@@ -43,6 +43,9 @@ type EstimateInput struct {
 	TargetLoad          float64
 	TargetRetentionDays float64
 	ErrorBudget         float64
+	PriceRAMPerGiBMonth  float64
+	PriceCPUPerCoreMonth float64
+	PriceDiskPerGiBMonth float64
 }
 
 func keyVal(r Row, key string) float64 {
@@ -318,5 +321,33 @@ func BuildReport(rows []Row, in EstimateInput) (map[string]any, error) {
 		},
 		"range_with_error_budget": rangeOut,
 	}
+
+	if in.PriceRAMPerGiBMonth > 0 || in.PriceCPUPerCoreMonth > 0 || in.PriceDiskPerGiBMonth > 0 {
+		const gib = 1073741824.0
+		ramGiB := estimate["mem_peak_bytes"] / gib
+		diskGiB := estimate["disk_bytes"] / gib
+		cpuCores := estimate["cpu_cores"]
+
+		costRAM := ramGiB * in.PriceRAMPerGiBMonth
+		costCPU := cpuCores * in.PriceCPUPerCoreMonth
+		costDisk := diskGiB * in.PriceDiskPerGiBMonth
+
+		ramGiBMin := rangeOut["mem_peak_bytes"]["min"] / gib
+		ramGiBMax := rangeOut["mem_peak_bytes"]["max"] / gib
+		cpuMin := rangeOut["cpu_cores"]["min"]
+		cpuMax := rangeOut["cpu_cores"]["max"]
+		diskGiBMin := rangeOut["disk_bytes"]["min"] / gib
+		diskGiBMax := rangeOut["disk_bytes"]["max"] / gib
+
+		out["cost"] = map[string]float64{
+			"ram":       costRAM,
+			"cpu":       costCPU,
+			"disk":      costDisk,
+			"total":     costRAM + costCPU + costDisk,
+			"total_min": ramGiBMin*in.PriceRAMPerGiBMonth + cpuMin*in.PriceCPUPerCoreMonth + diskGiBMin*in.PriceDiskPerGiBMonth,
+			"total_max": ramGiBMax*in.PriceRAMPerGiBMonth + cpuMax*in.PriceCPUPerCoreMonth + diskGiBMax*in.PriceDiskPerGiBMonth,
+		}
+	}
+
 	return out, nil
 }
