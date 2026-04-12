@@ -45,14 +45,6 @@ type EstimateInput struct {
 	ErrorBudget         float64
 }
 
-func InferWorkloadType(instrument string) string {
-	if instrument == "loki" || instrument == "opensearch" {
-		return "logs"
-	}
-	return "metrics"
-}
-
-
 func keyVal(r Row, key string) float64 {
 	switch key {
 	case "cpu_cores":
