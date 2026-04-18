@@ -4,3 +4,9 @@
 /obs-advisor/server/obs-advisor
 math
 presentation
+
+# Terraform
+infra/terraform.tfvars
+infra/backend.hcl
+infra/.terraform/
+infra/.terraform.lock.hcl
