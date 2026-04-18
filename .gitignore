@@ -1,12 +1,17 @@
 .idea/
 .vscode/
-/obs-bench/obs-bench
-/obs-advisor/server/obs-advisor
+
 math
 presentation
+
+/obs-bench/obs-bench
+/obs-bench/.env
+
+/obs-advisor/server/obs-advisor
 
 # Terraform
 infra/terraform.tfvars
 infra/backend.hcl
 infra/.terraform/
 infra/.terraform.lock.hcl
+

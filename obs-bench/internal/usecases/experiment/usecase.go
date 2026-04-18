@@ -2,7 +2,8 @@ package experiment_usecase
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
+
 	"obs-bench/internal/enum"
 	resources_usage_info_storage_provider "obs-bench/internal/providers/resources-usage-info-storage"
 	"obs-bench/internal/services/experimentstack"
@@ -48,6 +49,13 @@ func NewExperimentUsecase(
 }
 
 func (u *usecase) RunExperiment(ctx context.Context, instrument enum.Instrument, loadValue int, retentionDays int, duration time.Duration) error {
+	collectWindow := duration - warmupDuration
+	if collectWindow <= 0 {
+		slog.Warn("duration shorter than warmup, using full duration as collect window (smoke mode)",
+			"duration", duration, "warmup", warmupDuration)
+		collectWindow = duration
+	}
+
 	if err := u.monitoringService.UpMonitoring(ctx); err != nil {
 		return err
 	}
@@ -58,11 +66,6 @@ func (u *usecase) RunExperiment(ctx context.Context, instrument enum.Instrument,
 
 	if err := u.instrumentWorkload.Run(ctx, instrument, loadValue, duration); err != nil {
 		return err
-	}
-
-	collectWindow := duration - warmupDuration
-	if collectWindow <= 0 {
-		return fmt.Errorf("duration %v is too short: must be longer than warmup %v", duration, warmupDuration)
 	}
 
 	resourcesUsageInfo, err := u.resourcesCollector.Collect(ctx, instrument, collectWindow)

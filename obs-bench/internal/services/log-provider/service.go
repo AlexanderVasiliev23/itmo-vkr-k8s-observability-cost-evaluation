@@ -2,16 +2,14 @@ package log_provider
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 
 	"obs-bench/internal/config"
 	"obs-bench/internal/enum"
+	"obs-bench/internal/pkg/imageutil"
 	"obs-bench/internal/providers/docker"
 	docker_registry "obs-bench/internal/providers/docker-registry"
 	"obs-bench/internal/providers/kubernetes"
-
-	"golang.org/x/mod/sumdb/dirhash"
 )
 
 // ILogProviderService поднимает деплой log-load-generator в кластере.
@@ -24,6 +22,7 @@ type service struct {
 	dockerRegistryProvider docker_registry.IDockerRegistryProvider
 	kubernetesProvider     kubernetes.IKubernetesProvider
 	cfg                    *config.Config
+	dockerHubNamespace     string
 }
 
 func NewLogProviderService(
@@ -37,18 +36,17 @@ func NewLogProviderService(
 		dockerRegistryProvider: dockerRegistryProvider,
 		kubernetesProvider:     kubernetesProvider,
 		cfg:                    cfg,
+		dockerHubNamespace:     cfg.DockerHubNamespace,
 	}
 }
 
 func (s *service) UpLogProvider(ctx context.Context, instrument enum.Instrument, logsPerSec int) error {
 	const contextPath = "./images/log-load-generator"
 
-	hash, err := dirhash.HashDir(contextPath, "", dirhash.Hash1)
+	tag, err := imageutil.BuildDevTag(contextPath, "log-load-generator", s.dockerHubNamespace)
 	if err != nil {
 		return err
 	}
-	hexHash := hex.EncodeToString([]byte(hash))
-	tag := fmt.Sprintf("log-load-generator:dev-%s", hexHash[:12])
 
 	if err := s.dockerProvider.RecreateImageWithNewTag(ctx, tag, contextPath); err != nil {
 		return err

@@ -23,6 +23,7 @@ type service struct {
 	dockerRegistryProvider   docker_registry.IDockerRegistryProvider
 	releaseName              string
 	metricsProviderNamespace string
+	dockerHubNamespace       string
 }
 
 func NewPrometheusService(
@@ -39,11 +40,12 @@ func NewPrometheusService(
 		dockerRegistryProvider:   dockerRegistryProvider,
 		releaseName:              cfg.Topology.Prometheus.HelmReleaseName,
 		metricsProviderNamespace: cfg.Topology.MetricsProviderNamespace,
+		dockerHubNamespace:       cfg.DockerHubNamespace,
 	}
 }
 
 func (s *service) UpPrometheusStack(ctx context.Context, namespace string, retentionDays int) error {
-	tag, err := diskexporter.BuildDevImageTag()
+	tag, err := diskexporter.BuildDevImageTag(s.dockerHubNamespace)
 	if err != nil {
 		return err
 	}

@@ -24,6 +24,7 @@ type service struct {
 	helmProvider           helm.IHelmProvider
 	dockerProvider         docker.IDockerProvider
 	dockerRegistryProvider docker_registry.IDockerRegistryProvider
+	dockerHubNamespace     string
 }
 
 func NewOpenSearchService(
@@ -31,13 +32,14 @@ func NewOpenSearchService(
 	helmProvider helm.IHelmProvider,
 	dockerProvider docker.IDockerProvider,
 	dockerRegistryProvider docker_registry.IDockerRegistryProvider,
-	_ *config.Config,
+	cfg *config.Config,
 ) IOpenSearchService {
 	return &service{
 		kubernetesProvider:     kubernetesProvider,
 		helmProvider:           helmProvider,
 		dockerProvider:         dockerProvider,
 		dockerRegistryProvider: dockerRegistryProvider,
+		dockerHubNamespace:     cfg.DockerHubNamespace,
 	}
 }
 
@@ -96,7 +98,7 @@ func (s *service) UpOpenSearchStack(ctx context.Context, namespace string, _ int
 		return err
 	}
 
-	tag, err := diskexporter.BuildDevImageTag()
+	tag, err := diskexporter.BuildDevImageTag(s.dockerHubNamespace)
 	if err != nil {
 		return err
 	}

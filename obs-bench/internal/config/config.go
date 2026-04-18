@@ -1,125 +1,103 @@
 package config
 
 import (
-	"fmt"
-	"os"
-	"strconv"
-	"strings"
-
-	docker_registry "obs-bench/internal/providers/docker-registry"
+	"github.com/ilyakaznacheev/cleanenv"
 )
 
 type Config struct {
-	DockerRegistryType docker_registry.DockerRegistryType
+	DockerHubNamespace string
 	StorageDSN         string
 	SQLDebug           bool
 	Topology           ClusterLayout
 }
 
+type envConfig struct {
+	DockerHubNamespace string `env:"OBS_BENCH_DOCKERHUB_NAMESPACE"`
+	StorageDSN         string `env:"OBS_BENCH_STORAGE_DSN"        env-default:"file:test.db?cache=shared&mode=rwc"`
+	SQLDebug           bool   `env:"OBS_BENCH_SQL_DEBUG"          env-default:"false"`
+
+	// Имена helm-релизов / сервисов для построения defaultTopology
+	PrometheusRelease string `env:"OBS_BENCH_PROMETHEUS_RELEASE"        env-default:"prometheus"`
+	VMSingleService   string `env:"OBS_BENCH_VM_SINGLE_SERVICE"         env-default:"vmsingle-victoria-metrics-k8s-stack"`
+	LokiService       string `env:"OBS_BENCH_LOKI_QUERY_SERVICE"        env-default:"loki"`
+	OpenSearchService string `env:"OBS_BENCH_OPENSEARCH_QUERY_SERVICE"  env-default:"opensearch-cluster-master"`
+
+	// Topology overrides (опциональные, перекрывают defaultTopology)
+	MonitoringNamespace       string `env:"OBS_BENCH_MONITORING_NAMESPACE"`
+	CentralPrometheusService  string `env:"OBS_BENCH_CENTRAL_PROMETHEUS_SERVICE"`
+	MetricsProviderNamespace  string `env:"OBS_BENCH_METRICS_PROVIDER_NAMESPACE"`
+	LogProducerNamespace      string `env:"OBS_BENCH_LOG_PRODUCER_NAMESPACE"`
+	PrometheusTargetNamespace string `env:"OBS_BENCH_PROMETHEUS_TARGET_NAMESPACE"`
+	VictoriaTargetNamespace   string `env:"OBS_BENCH_VICTORIA_TARGET_NAMESPACE"`
+	LokiTargetNamespace       string `env:"OBS_BENCH_LOKI_TARGET_NAMESPACE"`
+	OpenSearchTargetNamespace string `env:"OBS_BENCH_OPENSEARCH_TARGET_NAMESPACE"`
+	PrometheusQueryLocalPort  int    `env:"OBS_BENCH_PROMETHEUS_QUERY_LOCAL_PORT"`
+	VictoriaQueryLocalPort    int    `env:"OBS_BENCH_VICTORIA_QUERY_LOCAL_PORT"`
+	LokiQueryLocalPort        int    `env:"OBS_BENCH_LOKI_QUERY_LOCAL_PORT"`
+	OpenSearchQueryLocalPort  int    `env:"OBS_BENCH_OPENSEARCH_QUERY_LOCAL_PORT"`
+}
+
 func NewConfig() (*Config, error) {
-	regType, err := parseDockerRegistryType(os.Getenv("OBS_BENCH_DOCKER_REGISTRY"))
-	if err != nil {
-		return nil, err
+	var e envConfig
+	if err := cleanenv.ReadConfig(".env", &e); err != nil {
+		if err := cleanenv.ReadEnv(&e); err != nil {
+			return nil, err
+		}
 	}
 
-	dsn := os.Getenv("OBS_BENCH_STORAGE_DSN")
-	if dsn == "" {
-		dsn = "file:test.db?cache=shared&mode=rwc"
-	}
-
-	promRelease := os.Getenv("OBS_BENCH_PROMETHEUS_RELEASE")
-	if promRelease == "" {
-		promRelease = "prometheus"
-	}
-
-	vmSingle := os.Getenv("OBS_BENCH_VM_SINGLE_SERVICE")
-	if vmSingle == "" {
-		vmSingle = "vmsingle-victoria-metrics-k8s-stack"
-	}
-
-	lokiSvc := os.Getenv("OBS_BENCH_LOKI_QUERY_SERVICE")
-	if lokiSvc == "" {
-		lokiSvc = "loki"
-	}
-	osSvc := os.Getenv("OBS_BENCH_OPENSEARCH_QUERY_SERVICE")
-	if osSvc == "" {
-		osSvc = "opensearch-cluster-master"
-	}
-
-	topo := defaultTopology(promRelease, vmSingle, lokiSvc, osSvc)
-	applyTopologyEnvOverrides(&topo)
+	topo := defaultTopology(e.PrometheusRelease, e.VMSingleService, e.LokiService, e.OpenSearchService)
+	applyOverrides(&topo, &e)
 	if err := topo.ValidateInstrumentCoverage(); err != nil {
 		return nil, err
 	}
 
-	sqlDebug := strings.EqualFold(strings.TrimSpace(os.Getenv("OBS_BENCH_SQL_DEBUG")), "1") ||
-		strings.EqualFold(strings.TrimSpace(os.Getenv("OBS_BENCH_SQL_DEBUG")), "true")
-
 	return &Config{
-		DockerRegistryType: regType,
-		StorageDSN:         dsn,
-		SQLDebug:           sqlDebug,
+		DockerHubNamespace: e.DockerHubNamespace,
+		StorageDSN:         e.StorageDSN,
+		SQLDebug:           e.SQLDebug,
 		Topology:           topo,
 	}, nil
 }
 
-// applyTopologyEnvOverrides подставляет значения из env поверх defaultTopology (частичный override).
-func applyTopologyEnvOverrides(t *ClusterLayout) {
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_MONITORING_NAMESPACE")); v != "" {
-		t.CentralMonitoring.Namespace = v
+func applyOverrides(t *ClusterLayout, e *envConfig) {
+	if e.MonitoringNamespace != "" {
+		t.CentralMonitoring.Namespace = e.MonitoringNamespace
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_CENTRAL_PROMETHEUS_SERVICE")); v != "" {
-		t.CentralMonitoring.PrometheusServiceName = v
+	if e.CentralPrometheusService != "" {
+		t.CentralMonitoring.PrometheusServiceName = e.CentralPrometheusService
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_METRICS_PROVIDER_NAMESPACE")); v != "" {
-		t.MetricsProviderNamespace = v
+	if e.MetricsProviderNamespace != "" {
+		t.MetricsProviderNamespace = e.MetricsProviderNamespace
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_LOG_PRODUCER_NAMESPACE")); v != "" {
-		t.LogProducerNamespace = v
+	if e.LogProducerNamespace != "" {
+		t.LogProducerNamespace = e.LogProducerNamespace
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_PROMETHEUS_TARGET_NAMESPACE")); v != "" {
-		t.Prometheus.DeployNamespace = v
-		t.Prometheus.PVCQueryNamespace = v
+	if e.PrometheusTargetNamespace != "" {
+		t.Prometheus.DeployNamespace = e.PrometheusTargetNamespace
+		t.Prometheus.PVCQueryNamespace = e.PrometheusTargetNamespace
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_VICTORIA_TARGET_NAMESPACE")); v != "" {
-		t.VictoriaMetrics.DeployNamespace = v
-		t.VictoriaMetrics.PVCQueryNamespace = v
+	if e.VictoriaTargetNamespace != "" {
+		t.VictoriaMetrics.DeployNamespace = e.VictoriaTargetNamespace
+		t.VictoriaMetrics.PVCQueryNamespace = e.VictoriaTargetNamespace
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_PROMETHEUS_QUERY_LOCAL_PORT")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			t.Prometheus.QueryLocalPort = n
-		}
+	if e.LokiTargetNamespace != "" {
+		t.Loki.DeployNamespace = e.LokiTargetNamespace
+		t.Loki.PVCQueryNamespace = e.LokiTargetNamespace
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_VICTORIA_QUERY_LOCAL_PORT")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			t.VictoriaMetrics.QueryLocalPort = n
-		}
+	if e.OpenSearchTargetNamespace != "" {
+		t.OpenSearch.DeployNamespace = e.OpenSearchTargetNamespace
+		t.OpenSearch.PVCQueryNamespace = e.OpenSearchTargetNamespace
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_LOKI_TARGET_NAMESPACE")); v != "" {
-		t.Loki.DeployNamespace = v
-		t.Loki.PVCQueryNamespace = v
+	if e.PrometheusQueryLocalPort != 0 {
+		t.Prometheus.QueryLocalPort = e.PrometheusQueryLocalPort
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_OPENSEARCH_TARGET_NAMESPACE")); v != "" {
-		t.OpenSearch.DeployNamespace = v
-		t.OpenSearch.PVCQueryNamespace = v
+	if e.VictoriaQueryLocalPort != 0 {
+		t.VictoriaMetrics.QueryLocalPort = e.VictoriaQueryLocalPort
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_LOKI_QUERY_LOCAL_PORT")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			t.Loki.QueryLocalPort = n
-		}
+	if e.LokiQueryLocalPort != 0 {
+		t.Loki.QueryLocalPort = e.LokiQueryLocalPort
 	}
-	if v := strings.TrimSpace(os.Getenv("OBS_BENCH_OPENSEARCH_QUERY_LOCAL_PORT")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			t.OpenSearch.QueryLocalPort = n
-		}
-	}
-}
-
-func parseDockerRegistryType(s string) (docker_registry.DockerRegistryType, error) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "", string(docker_registry.DockerRegistryTypeMinikube):
-		return docker_registry.DockerRegistryTypeMinikube, nil
-	default:
-		return "", fmt.Errorf("unknown OBS_BENCH_DOCKER_REGISTRY %q (supported: minikube)", s)
+	if e.OpenSearchQueryLocalPort != 0 {
+		t.OpenSearch.QueryLocalPort = e.OpenSearchQueryLocalPort
 	}
 }

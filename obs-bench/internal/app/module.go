@@ -93,9 +93,7 @@ func Module(runCtx context.Context) fx.Option {
 		fx.Provide(
 			config.NewConfig,
 			docker.NewDockerProvider,
-			func(cfg *config.Config) (docker_registry.IDockerRegistryProvider, error) {
-				return docker_registry.NewDockerRegistryProvider(cfg.DockerRegistryType)
-			},
+			docker_registry.New,
 			kubernetes.NewKubernetesProvider,
 			helm.NewHelmProvider,
 			func(cfg *config.Config) (resources_usage_info_storage_provider.IResourcesUsageInfoStorageProvider, error) {

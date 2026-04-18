@@ -2,14 +2,12 @@ package metrics_provider
 
 import (
 	"context"
-	"encoding/hex"
-	"fmt"
 
+	"obs-bench/internal/config"
+	"obs-bench/internal/pkg/imageutil"
 	"obs-bench/internal/providers/docker"
 	docker_registry "obs-bench/internal/providers/docker-registry"
 	"obs-bench/internal/providers/kubernetes"
-
-	"golang.org/x/mod/sumdb/dirhash"
 )
 
 type IMetricsProviderService interface {
@@ -20,32 +18,30 @@ type service struct {
 	dockerProvider         docker.IDockerProvider
 	dockerRegistryProvider docker_registry.IDockerRegistryProvider
 	kubernetesProvider     kubernetes.IKubernetesProvider
+	dockerHubNamespace     string
 }
 
 func NewMetricsProviderService(
 	dockerProvider docker.IDockerProvider,
 	dockerRegistryProvider docker_registry.IDockerRegistryProvider,
 	kubernetesProvider kubernetes.IKubernetesProvider,
+	cfg *config.Config,
 ) IMetricsProviderService {
 	return &service{
 		dockerProvider:         dockerProvider,
 		dockerRegistryProvider: dockerRegistryProvider,
 		kubernetesProvider:     kubernetesProvider,
+		dockerHubNamespace:     cfg.DockerHubNamespace,
 	}
 }
 
 func (s *service) UpMetricsProvider(ctx context.Context, namespace string, series int) error {
-	const (
-		providerDockerfileContextPath = "./images/metrics-provider"
-	)
+	const providerDockerfileContextPath = "./images/metrics-provider"
 
-	hash, err := dirhash.HashDir(providerDockerfileContextPath, "", dirhash.Hash1)
+	tag, err := imageutil.BuildDevTag(providerDockerfileContextPath, "metrics-provider", s.dockerHubNamespace)
 	if err != nil {
 		return err
 	}
-	hexHash := hex.EncodeToString([]byte(hash))
-
-	tag := fmt.Sprintf("metrics-provider:dev-%s", hexHash[:12])
 
 	if err := s.dockerProvider.RecreateImageWithNewTag(ctx, tag, providerDockerfileContextPath); err != nil {
 		return err

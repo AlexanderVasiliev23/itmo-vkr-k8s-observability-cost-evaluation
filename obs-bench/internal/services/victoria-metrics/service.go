@@ -22,6 +22,7 @@ type service struct {
 	dockerProvider           docker.IDockerProvider
 	dockerRegistryProvider   docker_registry.IDockerRegistryProvider
 	metricsProviderNamespace string
+	dockerHubNamespace       string
 }
 
 func NewVictoriaMetricsService(
@@ -37,11 +38,12 @@ func NewVictoriaMetricsService(
 		dockerProvider:           dockerProvider,
 		dockerRegistryProvider:   dockerRegistryProvider,
 		metricsProviderNamespace: cfg.Topology.MetricsProviderNamespace,
+		dockerHubNamespace:       cfg.DockerHubNamespace,
 	}
 }
 
 func (s *service) UpVictoriaMetricsStack(ctx context.Context, namespace string, retentionDays int) error {
-	tag, err := diskexporter.BuildDevImageTag()
+	tag, err := diskexporter.BuildDevImageTag(s.dockerHubNamespace)
 	if err != nil {
 		return err
 	}
@@ -113,6 +115,14 @@ func (s *service) UpVictoriaMetricsStack(ctx context.Context, namespace string, 
 	}
 
 	if err := s.helmProvider.Up(ctx, namespace, vals, repoURL, chartName, releaseName); err != nil {
+		return err
+	}
+
+	// Helm up регистрирует новый webhook, но HTTPS-сервер оператора может не успеть
+	// принять соединения сразу после перехода пода в Ready. Удаляем webhook
+	// повторно — VMServiceScrape будет создан без webhook-валидации, оператор
+	// подхватит ресурс в обычном режиме reconcile.
+	if err := s.kubernetesProvider.DeleteVMWebhooks(ctx); err != nil {
 		return err
 	}
 

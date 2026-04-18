@@ -23,6 +23,7 @@ type service struct {
 	dockerProvider         docker.IDockerProvider
 	dockerRegistryProvider docker_registry.IDockerRegistryProvider
 	releaseName            string
+	dockerHubNamespace     string
 }
 
 func NewLokiService(
@@ -38,6 +39,7 @@ func NewLokiService(
 		dockerProvider:         dockerProvider,
 		dockerRegistryProvider: dockerRegistryProvider,
 		releaseName:            cfg.Topology.Loki.HelmReleaseName,
+		dockerHubNamespace:     cfg.DockerHubNamespace,
 	}
 }
 
@@ -136,7 +138,7 @@ func (s *service) UpLokiStack(ctx context.Context, namespace string, retentionDa
 		return err
 	}
 
-	tag, err := diskexporter.BuildDevImageTag()
+	tag, err := diskexporter.BuildDevImageTag(s.dockerHubNamespace)
 	if err != nil {
 		return err
 	}
