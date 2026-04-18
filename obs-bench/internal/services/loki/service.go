@@ -123,6 +123,12 @@ func (s *service) UpLokiStack(ctx context.Context, namespace string, retentionDa
 		"gateway": map[string]interface{}{
 			"enabled": false,
 		},
+		"chunksCache": map[string]interface{}{
+			"enabled": false,
+		},
+		"resultsCache": map[string]interface{}{
+			"enabled": false,
+		},
 	}
 
 	if err := s.helmProvider.Up(ctx, namespace, vals, repoURL, chartName, s.releaseName); err != nil {

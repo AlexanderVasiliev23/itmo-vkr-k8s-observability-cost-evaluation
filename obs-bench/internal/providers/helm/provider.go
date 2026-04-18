@@ -56,7 +56,6 @@ func (p *provider) Up(
 	if err != nil {
 		return err
 	}
-	defer os.Remove(chartPath)
 
 	chart, err := loader.Load(chartPath)
 	if err != nil {
@@ -121,46 +120,54 @@ func (p *provider) TryUninstall(ctx context.Context, releaseName string) error {
 	return nil
 }
 
+func helmCacheDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, ".cache", "obs-bench", "helm")
+	return dir, os.MkdirAll(dir, 0o755)
+}
+
 func (p *provider) pullChart(settings *cli.EnvSettings, repoURL string, chartName string) (string, error) {
-	// проверяем кеш
-	if path, found := findChartArchive(chartName); found {
+	cacheDir, err := helmCacheDir()
+	if err != nil {
+		return "", err
+	}
+
+	if path, found := findChartArchive(cacheDir, chartName); found {
 		return path, nil
 	}
 
 	pull := action.NewPullWithOpts(action.WithConfig(new(action.Configuration)))
 	pull.Settings = settings
 	pull.RepoURL = repoURL
-	pull.DestDir = os.TempDir()
+	pull.DestDir = cacheDir
 	pull.Untar = false
 
 	if _, err := pull.Run(chartName); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to fetch %s from %s: %w", chartName, repoURL, err)
 	}
 
-	if path, found := findChartArchive(chartName); found {
+	if path, found := findChartArchive(cacheDir, chartName); found {
 		return path, nil
 	}
 
 	return "", fmt.Errorf("chart archive not found after pull")
 }
 
-func findChartArchive(chartName string) (string, bool) {
-	dir := os.TempDir()
+func findChartArchive(dir, chartName string) (string, bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", false
 	}
-	// Только .tgz от helm pull — иначе в /tmp совпадают посторонние файлы вроде loki-helm.yaml.
 	wantPrefix := chartName + "-"
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		name := e.Name()
-		if !strings.HasSuffix(name, ".tgz") {
-			continue
-		}
-		if strings.HasPrefix(name, wantPrefix) {
+		if strings.HasSuffix(name, ".tgz") && strings.HasPrefix(name, wantPrefix) {
 			return filepath.Join(dir, name), true
 		}
 	}
