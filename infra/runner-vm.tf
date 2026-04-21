@@ -44,9 +44,10 @@ resource "yandex_compute_instance" "runner" {
         - apt-get install -y kubectl
         # helm
         - curl -4 -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-        # yc CLI
-        - curl -4 -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -n -i /usr/local/yandex-cloud
-        - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
+        # yc CLI (скачиваем скрипт отдельно, затем запускаем от root — пайп теряет sudo)
+        - curl -4 -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh -o /tmp/yc-install.sh
+        - bash /tmp/yc-install.sh -n -i /usr/local/yandex-cloud
+        - ln -sf /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
     EOT
   }
 }

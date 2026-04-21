@@ -1,14 +1,14 @@
-output "cluster_id" {
-  value = yandex_kubernetes_cluster.k8s-cluster.id
+output "cluster_names" {
+  description = "Names of all Kubernetes clusters"
+  value       = { for k, v in yandex_kubernetes_cluster.k8s-cluster : k => v.name }
 }
 
-output "cluster_name" {
-  value = yandex_kubernetes_cluster.k8s-cluster.name
-}
-
-output "get_credentials_cmd" {
-  description = "Run this to configure kubectl"
-  value       = "yc managed-kubernetes cluster get-credentials ${yandex_kubernetes_cluster.k8s-cluster.name} --external --force"
+output "get_credentials_cmds" {
+  description = "Commands to fetch kubeconfig for each cluster"
+  value = {
+    for k, v in yandex_kubernetes_cluster.k8s-cluster :
+    k => "yc managed-kubernetes cluster get-credentials ${v.name} --external --force --kubeconfig ~/.kube/${k}.yaml"
+  }
 }
 
 output "runner_ip" {

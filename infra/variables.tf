@@ -20,18 +20,6 @@ variable "zone" {
   default     = "ru-central1-a"
 }
 
-variable "cluster_name" {
-  description = "Kubernetes cluster name"
-  type        = string
-  default     = "obs-bench-cluster"
-}
-
-variable "node_group_name" {
-  description = "Kubernetes node group name"
-  type        = string
-  default     = "obs-bench-nodes"
-}
-
 variable "k8s_version" {
   description = "Kubernetes version"
   type        = string

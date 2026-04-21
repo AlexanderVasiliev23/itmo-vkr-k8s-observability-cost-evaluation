@@ -1,7 +1,14 @@
 locals {
   zone_a_v4_cidr_blocks = "10.1.0.0/16"
-  cluster_ipv4_cidr     = "10.112.0.0/16"
-  service_ipv4_cidr     = "10.96.0.0/16"
+
+  clusters = {
+    k1 = { name = "obs-bench-k1", cluster_cidr = "10.112.0.0/16", service_cidr = "10.96.0.0/16" }
+    k2 = { name = "obs-bench-k2", cluster_cidr = "10.113.0.0/16", service_cidr = "10.97.0.0/16" }
+    k3 = { name = "obs-bench-k3", cluster_cidr = "10.114.0.0/16", service_cidr = "10.98.0.0/16" }
+    k4 = { name = "obs-bench-k4", cluster_cidr = "10.115.0.0/16", service_cidr = "10.99.0.0/16" }
+  }
+
+  all_pod_service_cidrs = flatten([for k, v in local.clusters : [v.cluster_cidr, v.service_cidr]])
 }
 
 resource "yandex_vpc_network" "k8s-network" {
@@ -56,11 +63,11 @@ resource "yandex_vpc_security_group" "k8s-nodegroup-traffic" {
   network_id  = yandex_vpc_network.k8s-network.id
 
   ingress {
-    description    = "Traffic between pods and services."
+    description    = "Traffic between pods and services (all clusters)."
     from_port      = 0
     to_port        = 65535
     protocol       = "ANY"
-    v4_cidr_blocks = [local.cluster_ipv4_cidr, local.service_ipv4_cidr]
+    v4_cidr_blocks = local.all_pod_service_cidrs
   }
   egress {
     description    = "Outgoing traffic to external resources."
@@ -119,7 +126,7 @@ resource "yandex_vpc_security_group" "k8s-cluster-traffic" {
     description    = "Master to metric-server."
     port           = 4443
     protocol       = "TCP"
-    v4_cidr_blocks = [local.cluster_ipv4_cidr]
+    v4_cidr_blocks = local.all_pod_service_cidrs
   }
 }
 
@@ -158,11 +165,13 @@ resource "yandex_resourcemanager_folder_iam_binding" "lb-admin" {
 }
 
 resource "yandex_kubernetes_cluster" "k8s-cluster" {
-  description        = "obs-bench Kubernetes cluster"
-  name               = var.cluster_name
+  for_each = local.clusters
+
+  description        = "obs-bench Kubernetes cluster ${each.key}"
+  name               = each.value.name
   network_id         = yandex_vpc_network.k8s-network.id
-  cluster_ipv4_range = local.cluster_ipv4_cidr
-  service_ipv4_range = local.service_ipv4_cidr
+  cluster_ipv4_range = each.value.cluster_cidr
+  service_ipv4_range = each.value.service_cidr
 
   master {
     version = var.k8s_version
@@ -193,9 +202,11 @@ resource "yandex_kubernetes_cluster" "k8s-cluster" {
 }
 
 resource "yandex_kubernetes_node_group" "k8s-node-group" {
-  description = "Node group for obs-bench experiments"
-  name        = var.node_group_name
-  cluster_id  = yandex_kubernetes_cluster.k8s-cluster.id
+  for_each = local.clusters
+
+  description = "Node group for obs-bench experiments (${each.key})"
+  name        = "${each.value.name}-nodes"
+  cluster_id  = yandex_kubernetes_cluster.k8s-cluster[each.key].id
   version     = var.k8s_version
 
   scale_policy {
@@ -233,5 +244,11 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
       type = "network-ssd"
       size = var.node_disk_gb
     }
+  }
+
+  timeouts {
+    create = "90m"
+    update = "90m"
+    delete = "60m"
   }
 }
