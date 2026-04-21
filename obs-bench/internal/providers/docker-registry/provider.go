@@ -20,7 +20,7 @@ func New() IDockerRegistryProvider {
 // PushImage выполняет docker push. Тег должен содержать registry-префикс
 // (например "myuser/disk-usage-metrics-exporter:dev-xxx") — задаётся через OBS_BENCH_DOCKERHUB_NAMESPACE.
 func (p *dockerHubProvider) PushImage(ctx context.Context, tag string) error {
-	cmd := exec.CommandContext(ctx, "docker", "push", tag)
+	cmd := exec.CommandContext(ctx, "docker", "push", "--platform", "linux/amd64", tag)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
