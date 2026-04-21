@@ -34,6 +34,13 @@ func NewHelmProvider() IHelmProvider {
 	return &provider{}
 }
 
+func kubeconfigPath() string {
+	if kc := os.Getenv("KUBECONFIG"); kc != "" {
+		return kc
+	}
+	return os.Getenv("HOME") + "/.kube/config"
+}
+
 func (p *provider) Up(
 	ctx context.Context,
 	namespace string,
@@ -43,7 +50,7 @@ func (p *provider) Up(
 	releaseName string,
 ) error {
 	settings := cli.New()
-	settings.KubeConfig = os.Getenv("HOME") + "/.kube/config"
+	settings.KubeConfig = kubeconfigPath()
 	settings.SetNamespace(namespace)
 
 	actionConfig := new(action.Configuration)
@@ -78,7 +85,7 @@ func (p *provider) Up(
 
 func (p *provider) TryUninstall(ctx context.Context, releaseName string) error {
 	settings := cli.New()
-	settings.KubeConfig = os.Getenv("HOME") + "/.kube/config"
+	settings.KubeConfig = kubeconfigPath()
 
 	// Инициализируем без namespace чтобы листать все namespace.
 	actionConfig := new(action.Configuration)
