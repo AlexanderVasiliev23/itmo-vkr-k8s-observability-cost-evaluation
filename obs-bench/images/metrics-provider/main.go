@@ -62,6 +62,11 @@ func main() {
 		values[i] = rand.Float64()
 	}
 
+	attrSets := make([]metric2.MeasurementOption, seriesCount)
+	for i := range seriesCount {
+		attrSets[i] = metric2.WithAttributes(attribute.String("series_id", fmt.Sprintf("series_%d", i)))
+	}
+
 	// Обновляем значения в фоне, чтобы метрики не были статичными.
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -75,9 +80,7 @@ func main() {
 
 	_, err = meter.RegisterCallback(func(_ context.Context, o metric2.Observer) error {
 		for i := range seriesCount {
-			o.ObserveFloat64(gauge, values[i],
-				metric2.WithAttributes(attribute.String("series_id", fmt.Sprintf("series_%04d", i))),
-			)
+			o.ObserveFloat64(gauge, values[i], attrSets[i])
 		}
 		return nil
 	}, gauge)
@@ -90,4 +93,3 @@ func main() {
 	http.Handle("/metrics", promhttp.Handler())
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
-
