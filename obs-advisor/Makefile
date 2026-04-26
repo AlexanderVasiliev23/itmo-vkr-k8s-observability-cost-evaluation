@@ -1,4 +1,4 @@
-DB ?= ../obs-bench/test.db
+DB ?= ../obs-bench/obs_bench_results.db
 PORT ?= 8086
 
 .PHONY: run build
