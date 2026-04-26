@@ -13,7 +13,7 @@ type Config struct {
 
 type envConfig struct {
 	DockerHubNamespace string `env:"OBS_BENCH_DOCKERHUB_NAMESPACE"`
-	StorageDSN         string `env:"OBS_BENCH_STORAGE_DSN"        env-default:"file:test.db?cache=shared&mode=rwc"`
+	StorageDSN         string `env:"OBS_BENCH_STORAGE_DSN"        env-default:"file:obs_bench_results.db?cache=shared&mode=rwc"`
 	SQLDebug           bool   `env:"OBS_BENCH_SQL_DEBUG"          env-default:"false"`
 
 	// Имена helm-релизов / сервисов для построения defaultTopology
